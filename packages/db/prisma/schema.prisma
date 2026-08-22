@@ -32,13 +32,26 @@ enum SourcePlatform {
   sourcebottle
 }
 
-model Profile {
-  id         String      @id @default(cuid())
-  type       ProfileType
-  ownerEmail String      @unique @map("owner_email")
-  createdAt  DateTime    @default(now()) @map("created_at")
-  updatedAt  DateTime    @updatedAt @map("updated_at")
+model User {
+  id          String    @id @default(cuid())
+  email       String    @unique
+  createdAt   DateTime  @default(now()) @map("created_at")
+  lastLoginAt DateTime? @map("last_login_at")
 
+  profiles Profile[]
+  analyses Analysis[]
+
+  @@map("users")
+}
+
+model Profile {
+  id        String      @id @default(cuid())
+  type      ProfileType
+  userId    String      @unique @map("user_id")
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   individual IndividualProfile?
   enterprise EnterpriseProfile?
   analyses   Analysis[]
@@ -98,16 +111,19 @@ model Analysis {
   pitch          String?
   error          String?
   profileId      String?        @map("profile_id")
-  ip             String?        @map("ip")
+  userId         String?        @map("user_id")
+  anonId         String?        @map("anon_id")
   createdAt      DateTime       @default(now()) @map("created_at")
   updatedAt      DateTime       @updatedAt @map("updated_at")
 
-  profile Profile? @relation(fields: [profileId], references: [id])
-  matches  AnalysisJournalistMatch[]
+  profile Profile?            @relation(fields: [profileId], references: [id])
+  user    User?               @relation(fields: [userId], references: [id])
+  matches AnalysisJournalistMatch[]
   llmCalls LLMCall[]
 
   @@index([url, profileId, status])
-  @@index([ip, profileId])
+  @@index([userId, createdAt])
+  @@index([anonId, createdAt])
   @@map("analyses")
 }
 
