@@ -37,13 +37,26 @@ function createClient() {
       user: process.env.IMAP_USER ?? "",
       pass: process.env.IMAP_PASS ?? "",
     },
+    // ponytail: 10s connect timeout; skip the digest when the IMAP server is
+    // unreachable instead of hanging for the default 300s socket timeout.
+    connectionTimeout: 10_000,
+    socketTimeout: 30_000,
     logger: false,
   });
 }
 
 export async function fetchDigestEmails(): Promise<FetchedEmail[]> {
   const client = createClient();
-  await client.connect();
+  // ponytail: swallow socket-level errors that fire after a failed connect —
+  // the connect() catch already returns []; these would otherwise crash the
+  // worker via an unhandled 'error' event on the socket.
+  client.on("error", () => {});
+
+  try {
+    await client.connect();
+  } catch {
+    return [];
+  }
 
   const emails: FetchedEmail[] = [];
 
@@ -88,7 +101,13 @@ export async function fetchDigestEmails(): Promise<FetchedEmail[]> {
 export async function markEmailsSeen(uids: number[]): Promise<void> {
   if (uids.length === 0) return;
   const client = createClient();
-  await client.connect();
+  client.on("error", () => {});
+
+  try {
+    await client.connect();
+  } catch {
+    return;
+  }
 
   try {
     const lock = await client.getMailboxLock("INBOX");

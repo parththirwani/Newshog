@@ -1,20 +1,26 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@newshog/db";
-import { getSessionEmail } from "@/lib/auth";
+import { getSessionUser } from "@/lib/auth";
 import { summarizeIndividualProfile, summarizeCompanyProfile } from "@/lib/summarize";
 import { fetchXProfile } from "@/lib/x-api";
 import { crawlCompanySite } from "@/lib/crawl";
 import type { ProfileType } from "@newshog/shared";
 import { trackServer } from "@/lib/analytics";
 
+async function requireUser() {
+  const user = await getSessionUser();
+  if (!user) return null;
+  return user;
+}
+
 export async function GET() {
-  const email = await getSessionEmail();
-  if (!email) {
+  const user = await requireUser();
+  if (!user) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
 
   const profile = await prisma.profile.findUnique({
-    where: { ownerEmail: email },
+    where: { userId: user.id },
     include: { individual: true, enterprise: true },
   });
 
@@ -22,8 +28,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const email = await getSessionEmail();
-  if (!email) {
+  const user = await requireUser();
+  if (!user) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
 
@@ -33,7 +39,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "type must be 'individual' or 'enterprise'." }, { status: 400 });
   }
 
-  const existing = await prisma.profile.findUnique({ where: { ownerEmail: email } });
+  const existing = await prisma.profile.findUnique({ where: { userId: user.id } });
   if (existing) {
     return NextResponse.json({ error: "Profile already exists. Use PUT to update." }, { status: 409 });
   }
@@ -58,7 +64,7 @@ export async function POST(request: Request) {
       const profile = await prisma.profile.create({
         data: {
           type: "individual",
-          ownerEmail: email,
+          userId: user.id,
           individual: {
             create: {
               linkedinUrl: linkedinUrl || null,
@@ -94,7 +100,7 @@ export async function POST(request: Request) {
     const profile = await prisma.profile.create({
       data: {
         type: "enterprise",
-        ownerEmail: email,
+        userId: user.id,
         enterprise: {
           create: {
             companyName,
@@ -108,8 +114,8 @@ export async function POST(request: Request) {
           },
         },
       },
-include: { enterprise: true },
-      });
+      include: { enterprise: true },
+    });
 
       trackServer("profile_created", { type: "enterprise" });
       return NextResponse.json(profile, { status: 201 });
@@ -120,13 +126,13 @@ include: { enterprise: true },
 }
 
 export async function PUT(request: Request) {
-  const email = await getSessionEmail();
-  if (!email) {
+  const user = await requireUser();
+  if (!user) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
 
   const existing = await prisma.profile.findUnique({
-    where: { ownerEmail: email },
+    where: { userId: user.id },
     include: { individual: true, enterprise: true },
   });
   if (!existing) {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma, logStage } from "@newshog/db";
 import { generatePitch } from "@/lib/pitch";
-import { isProfileOwner, resolveOwnerProfileId } from "@/lib/owner";
+import { isOwner, resolveOwnerIds } from "@/lib/owner";
 import type { Angle, ExpertiseSummary, CompanyContext } from "@newshog/shared";
 
 function stringList(value: unknown): string {
@@ -55,8 +55,8 @@ export async function POST(
 
     // Pitch regeneration costs an LLM call — only the owner may burn it on a
     // personalized analysis. Context-free analyses are publicly editable.
-    const ownerProfileId = await resolveOwnerProfileId();
-    if (!isProfileOwner(analysis.profileId, ownerProfileId)) {
+    const { userId, profileId: ownerProfileId } = await resolveOwnerIds();
+    if (!isOwner(analysis, userId, ownerProfileId)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

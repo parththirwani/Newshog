@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@newshog/db";
-import { isProfileOwner, resolveOwnerProfileId } from "@/lib/owner";
+import { isOwner, resolveOwnerIds } from "@/lib/owner";
 
 export async function GET(
   _request: Request,
@@ -10,7 +10,7 @@ export async function GET(
     const { id } = await params;
     const analysis = await prisma.analysis.findUnique({
       where: { id },
-      select: { profileId: true },
+      select: { profileId: true, userId: true },
     });
     if (!analysis) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -25,8 +25,8 @@ export async function GET(
     // ponytail: non-owners see only a count — match details can expose who
     // asked, which is private. Full list stays owner-only (or public when the
     // analysis is context-free).
-    const ownerProfileId = await resolveOwnerProfileId();
-    if (!isProfileOwner(analysis.profileId, ownerProfileId)) {
+    const { userId, profileId: ownerProfileId } = await resolveOwnerIds();
+    if (!isOwner(analysis, userId, ownerProfileId)) {
       return NextResponse.json({ count: matches.length });
     }
 

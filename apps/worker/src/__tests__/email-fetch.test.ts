@@ -19,6 +19,7 @@ vi.mock("imapflow", () => ({
       search: mockSearch,
       fetchOne: mockFetchOne,
       messageFlagsAdd: mockMessageFlagsAdd,
+      on: vi.fn(),
     };
   }),
 }));

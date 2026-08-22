@@ -1,5 +1,6 @@
 import Image from "next/image";
 import logo from "../../public/logo.png";
+import { AuthButton } from "./AuthButton";
 
 export function SiteHeader() {
   return (
@@ -27,12 +28,15 @@ export function SiteHeader() {
             Pricing
           </a>
         </nav>
-        <a
-          href="#cta"
-          className="rounded-full border border-border px-3.5 py-1.5 text-sm font-medium transition-colors hover:bg-secondary"
-        >
-          Score a story
-        </a>
+        <div className="flex items-center gap-2">
+          <AuthButton />
+          <a
+            href="#cta"
+            className="rounded-full border border-border px-3.5 py-1.5 text-sm font-medium transition-colors hover:bg-secondary"
+          >
+            Score a story
+          </a>
+        </div>
       </div>
     </header>
   );

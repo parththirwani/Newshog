@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { prisma } from "@newshog/db";
+import { getSessionUser } from "@/lib/auth";
 import { ResultView } from "./ResultView";
-import { isProfileOwner, resolveOwnerProfileId } from "@/lib/owner";
+import { isOwner, resolveOwnerIds } from "@/lib/owner";
 
 async function getAnalysis(id: string) {
   const analysis = await prisma.analysis.findUnique({
@@ -13,6 +14,7 @@ async function getAnalysis(id: string) {
       articleTitle: true,
       score: true,
       profileId: true,
+      userId: true,
     },
   });
   if (!analysis) notFound();
@@ -49,8 +51,9 @@ export default async function AnalysisPage({
 }) {
   const { id } = await params;
   const analysis = await getAnalysis(id);
-  const ownerProfileId = await resolveOwnerProfileId();
-  const owner = isProfileOwner(analysis.profileId, ownerProfileId);
+  const user = await getSessionUser();
+  const { userId, profileId } = await resolveOwnerIds();
+  const owner = isOwner(analysis, userId, profileId);
 
-  return <ResultView id={id} owner={owner} />;
+  return <ResultView id={id} owner={owner} user={user} />;
 }

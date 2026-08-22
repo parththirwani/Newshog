@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const session = vi.hoisted(() => ({ email: null as string | null }));
+const session = vi.hoisted(() => ({ user: null as { id: string; email: string } | null }));
 
 vi.mock("@/lib/auth", () => ({
-  getSessionEmail: () => Promise.resolve(session.email),
+  getSessionUser: () => Promise.resolve(session.user),
 }));
 
 const prismaMock = {
@@ -31,8 +31,8 @@ function makeParams(id: string) {
 describe("GET /api/analyze/:id/matches", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    session.email = null;
-    prismaMock.analysis.findUnique.mockResolvedValue({ profileId: null });
+    session.user = null;
+    prismaMock.analysis.findUnique.mockResolvedValue({ profileId: null, userId: null });
     prismaMock.profile.findUnique.mockResolvedValue(null);
   });
 
@@ -134,7 +134,7 @@ describe("GET /api/analyze/:id/matches", () => {
   });
 
   it("returns only a count to non-owners of a profile-linked analysis", async () => {
-    prismaMock.analysis.findUnique.mockResolvedValue({ profileId: "profile-1" });
+    prismaMock.analysis.findUnique.mockResolvedValue({ profileId: "profile-1", userId: null });
     prismaMock.analysisJournalistMatch.findMany.mockResolvedValue([
       {
         analysisId: "abc",
@@ -144,7 +144,7 @@ describe("GET /api/analyze/:id/matches", () => {
         journalistRequest: { id: "req-1", topicText: "Need experts" },
       },
     ]);
-    session.email = "someone-else@example.com";
+    session.user = { id: "someone-else", email: "someone-else@example.com" };
     prismaMock.profile.findUnique.mockResolvedValue({ id: "profile-2" });
 
     const response = await GET(makeRequest("http://localhost/api/analyze/abc/matches"), {
@@ -157,7 +157,7 @@ describe("GET /api/analyze/:id/matches", () => {
   });
 
   it("returns the full list to the profile owner", async () => {
-    prismaMock.analysis.findUnique.mockResolvedValue({ profileId: "profile-1" });
+    prismaMock.analysis.findUnique.mockResolvedValue({ profileId: "profile-1", userId: null });
     prismaMock.analysisJournalistMatch.findMany.mockResolvedValue([
       {
         analysisId: "abc",
@@ -167,7 +167,7 @@ describe("GET /api/analyze/:id/matches", () => {
         journalistRequest: { id: "req-1", requesterName: "Dana", outlet: "Reuters", topicText: "Need SMB data" },
       },
     ]);
-    session.email = "owner@example.com";
+    session.user = { id: "owner-user", email: "owner@example.com" };
     prismaMock.profile.findUnique.mockResolvedValue({ id: "profile-1" });
 
     const response = await GET(makeRequest("http://localhost/api/analyze/abc/matches"), {
@@ -177,5 +177,18 @@ describe("GET /api/analyze/:id/matches", () => {
     const body = await response.json();
     expect(Array.isArray(body)).toBe(true);
     expect(body[0].journalistRequest.requesterName).toBe("Dana");
+  });
+
+  it("returns only a count to a non-owning user of a user-linked analysis", async () => {
+    prismaMock.analysis.findUnique.mockResolvedValue({ profileId: null, userId: "user-1" });
+    prismaMock.analysisJournalistMatch.findMany.mockResolvedValue([{ analysisId: "abc", journalistRequestId: "req-1" }]);
+    session.user = { id: "user-2", email: "other@example.com" };
+
+    const response = await GET(makeRequest("http://localhost/api/analyze/abc/matches"), {
+      params: makeParams("abc"),
+    });
+
+    const body = await response.json();
+    expect(body).toEqual({ count: 1 });
   });
 });

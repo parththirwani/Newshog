@@ -5,9 +5,10 @@ import Link from "next/link";
 import { ArrowLeft, Check, ChevronDown, Copy, Loader2, RefreshCw, Share2 } from "lucide-react";
 import { SiteHeader } from "@/components/landing/SiteHeader";
 import { SiteFooter } from "@/components/landing/SiteFooter";
-import { SCORE_THRESHOLD_LOW, SCORE_THRESHOLD_HIGH } from "@newshog/shared";
+import { AppShell } from "@/components/app/AppShell";
 import type { Analysis, Angle, AnalysisJournalistMatch } from "@newshog/shared";
-import { band, relativeTime, nextAction } from "@/lib/result-utils";
+import { relativeTime, nextAction } from "@/lib/result-utils";
+import { ScoreRing } from "@/components/app/ScoreRing";
 import { trackClient } from "@/lib/analytics-client";
 
 const btnSecondary =
@@ -15,7 +16,7 @@ const btnSecondary =
 
 type MatchResponse = AnalysisJournalistMatch[] | { count: number };
 
-export function ResultView({ id, owner }: { id: string; owner: boolean }) {
+export function ResultView({ id, owner, user }: { id: string; owner: boolean; user: { email: string } | null }) {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [analysisErr, setAnalysisErr] = useState("");
   const [matches, setMatches] = useState<MatchResponse | null>(null);
@@ -94,40 +95,18 @@ export function ResultView({ id, owner }: { id: string; owner: boolean }) {
   }, [analysis?.status]);
 
   useEffect(() => {
+    if (analysis?.status !== "analyzed") return;
     let cancelled = false;
-    let attempts = 0;
-    const poll = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/analyze/${id}/matches`);
-        const data = await res.json();
-        if (cancelled) return;
-        if (res.ok && data && typeof data === "object") {
-          setMatches(data);
-          const finished =
-            attempts >= 5 ||
-            (Array.isArray(data) && data.length > 0) ||
-            (!Array.isArray(data) && data.count > 0);
-          if (finished) clearInterval(poll);
-        } else {
-          attempts++;
-          if (attempts >= 5) {
-            setMatchesErr(true);
-            clearInterval(poll);
-          }
-        }
-      } catch {
-        attempts++;
-        if (attempts >= 5) {
-          setMatchesErr(true);
-          clearInterval(poll);
-        }
-      }
-    }, 1500);
-    return () => {
-      cancelled = true;
-      clearInterval(poll);
-    };
-  }, [id]);
+    fetch(`/api/analyze/${id}/matches`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled && data) setMatches(data);
+      })
+      .catch(() => {
+        if (!cancelled) setMatchesErr(true);
+      });
+    return () => { cancelled = true; };
+  }, [id, analysis?.status]);
 
   const regeneratePitch = useCallback(
     async (angleTitle?: string) => {
@@ -201,16 +180,14 @@ export function ResultView({ id, owner }: { id: string; owner: boolean }) {
   const matchList = matches && Array.isArray(matches) ? matches : null;
   const matchCount = matches ? (Array.isArray(matches) ? matches.length : matches.count) : null;
 
-  return (
-    <div className="min-h-screen bg-background text-foreground">
-      <SiteHeader />
-      <main className="mx-auto max-w-3xl px-5 py-12">
+  const content = (
+    <>
         <Link
-          href="/"
+          href={owner ? "/dashboard" : "/"}
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft className="size-4" strokeWidth={1.75} />
-          New analysis
+          {owner ? "Dashboard" : "New analysis"}
         </Link>
 
         {analysisErr && (
@@ -233,18 +210,7 @@ export function ResultView({ id, owner }: { id: string; owner: boolean }) {
           <>
             <header className="mt-8 flex items-start justify-between gap-6">
               <div>
-                <span
-                  className={[
-                    "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 font-mono text-[11px] tracking-[0.12em] uppercase",
-                    score >= SCORE_THRESHOLD_HIGH
-                      ? "bg-accent-strong/15 text-accent-strong"
-                      : score >= SCORE_THRESHOLD_LOW
-                        ? "bg-amber-500/15 text-amber-500"
-                        : "bg-muted text-muted-foreground",
-                  ].join(" ")}
-                >
-                  {score} · {band(score)}
-                </span>
+                <ScoreRing score={score} size={80} />
                 <h1 className="mt-4 text-2xl font-semibold tracking-[-0.02em] text-balance sm:text-3xl">
                   {analysis.articleTitle}
                 </h1>
@@ -260,7 +226,7 @@ export function ResultView({ id, owner }: { id: string; owner: boolean }) {
                 <button onClick={share} className={btnSecondary}>
                   {shared ? (
                     <>
-                      <Check className="size-4" strokeWidth={1.75} /> Shared
+                      <Check className="size-4" strokeWidth={1.75} /> Copied
                     </>
                   ) : (
                     <>
@@ -511,6 +477,18 @@ export function ResultView({ id, owner }: { id: string; owner: boolean }) {
             Loading analysis...
           </div>
         )}
+    </>
+  );
+
+  if (owner && user) {
+    return <AppShell user={user}>{content}</AppShell>;
+  }
+
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <SiteHeader />
+      <main className="mx-auto max-w-3xl px-5 py-12">
+        {content}
       </main>
       <SiteFooter />
     </div>

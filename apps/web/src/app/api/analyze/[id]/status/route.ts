@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@newshog/db";
-import { isProfileOwner, resolveOwnerProfileId } from "@/lib/owner";
+import { isOwner, resolveOwnerIds } from "@/lib/owner";
 
 export async function GET(
   _request: Request,
@@ -21,6 +21,7 @@ export async function GET(
         pitch: true,
         error: true,
         profileId: true,
+        userId: true,
         updatedAt: true,
       },
     });
@@ -29,14 +30,14 @@ export async function GET(
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const ownerProfileId = await resolveOwnerProfileId();
-    const owner = isProfileOwner(analysis.profileId, ownerProfileId);
+    const { userId, profileId: ownerProfileId } = await resolveOwnerIds();
+    const owner = isOwner(analysis, userId, ownerProfileId);
 
-    // ponytail: owner gating is "no profile = public, else cookie(profile.ownerEmail)
-    // match". Real per-user accounts/ACL = Phase 7+. Context-free analyses stay
-    // public since they hold no private profile data.
+    // ponytail: owner gating is "context-free = public, else cookie(userId or
+    // profileId) match". Context-free analyses hold no private data. The
+    // owner's userId stays out of the public response — it's the account id.
     if (!owner) {
-      const { pitch: _pitch, ...pub } = analysis;
+      const { pitch: _pitch, userId: _userId, ...pub } = analysis;
       return NextResponse.json(pub);
     }
 

@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const session = vi.hoisted(() => ({ email: null as string | null }));
+const session = vi.hoisted(() => ({ user: null as { id: string; email: string } | null }));
 
 vi.mock("@/lib/auth", () => ({
-  getSessionEmail: () => Promise.resolve(session.email),
+  getSessionUser: () => Promise.resolve(session.user),
 }));
 
 const prismaMock = {
@@ -53,7 +53,7 @@ const baseAnalysis = {
 describe("POST /api/analyze/:id/pitch", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    session.email = null;
+    session.user = null;
     prismaMock.analysis.findUnique.mockResolvedValue(baseAnalysis);
     prismaMock.analysis.update.mockResolvedValue({ pitch: "Subject: test pitch\n\nBody." });
     prismaMock.analysisJournalistMatch.findFirst.mockResolvedValue(null);
@@ -100,7 +100,7 @@ describe("POST /api/analyze/:id/pitch", () => {
   });
 
   it("rejects regeneration on a profile-linked analysis when not the owner", async () => {
-    session.email = "someone-else@example.com";
+    session.user = { id: "someone-else", email: "someone-else@example.com" };
     prismaMock.analysis.findUnique.mockResolvedValue({ ...baseAnalysis, profileId: "profile-1" });
     prismaMock.profile.findUnique.mockResolvedValue({ id: "profile-2" });
 
@@ -110,7 +110,7 @@ describe("POST /api/analyze/:id/pitch", () => {
   });
 
   it("allows regeneration on a profile-linked analysis by the owner", async () => {
-    session.email = "owner@example.com";
+    session.user = { id: "owner-user", email: "owner@example.com" };
     prismaMock.analysis.findUnique.mockResolvedValue({ ...baseAnalysis, profileId: "profile-1" });
     prismaMock.profile.findUnique.mockResolvedValue({ id: "profile-1" });
 
@@ -120,7 +120,7 @@ describe("POST /api/analyze/:id/pitch", () => {
   });
 
   it("allows regeneration on context-free analyses regardless of session", async () => {
-    session.email = "someone@example.com";
+    session.user = { id: "someone", email: "someone@example.com" };
     prismaMock.profile.findUnique.mockResolvedValue({ id: "profile-2" });
 
     const response = await POST(makeRequest({}), { params: makeParams("abc") });

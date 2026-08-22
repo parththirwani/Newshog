@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, type FormEvent } from "react";
+import { useState, useEffect, useRef, useCallback, type FormEvent } from "react";
 import { ArrowRight, Link2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -11,11 +11,25 @@ export function UrlInput({
 }: {
   size?: "lg" | "md";
   className?: string;
-  onAnalyze?: (url: string) => void;
+  onAnalyze?: (url: string) => void | Promise<void>;
 }) {
   const [url, setUrl] = useState("");
   const [state, setState] = useState<"idle" | "working" | "done">("idle");
+  const [remaining, setRemaining] = useState<number | null>(null);
   const timeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  const refreshUsage = useCallback(() => {
+    fetch("/api/usage")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d && !d.signedIn && typeof d.remaining === "number") setRemaining(d.remaining);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    refreshUsage();
+  }, [refreshUsage]);
 
   useEffect(() => {
     return () => {
@@ -23,11 +37,12 @@ export function UrlInput({
     };
   }, []);
 
-  function submit(e: FormEvent) {
+  async function submit(e: FormEvent) {
     e.preventDefault();
     if (!url.trim() || state === "working") return;
     setState("working");
-    onAnalyze?.(url.trim());
+    await onAnalyze?.(url.trim());
+    refreshUsage();
     timeouts.current.push(
       setTimeout(() => {
         setState("done");
@@ -80,7 +95,13 @@ export function UrlInput({
           )}
         </button>
       </div>
-      <p className="mt-3 label-mono">First 3 stories free &middot; ~30s</p>
+      <p className="mt-3 label-mono">
+        {remaining !== null
+          ? remaining > 0
+            ? `${remaining} ${remaining === 1 ? "story" : "stories"} left free · log in to keep going`
+            : "All 3 free stories used · log in to keep analyzing"
+          : "First 3 stories free · ~30s"}
+      </p>
     </form>
   );
 }

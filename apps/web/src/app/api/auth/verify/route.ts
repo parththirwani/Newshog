@@ -25,8 +25,14 @@ export async function POST(request: Request) {
 
     await prisma.token.delete({ where: { id: token.id } });
 
+    const user = await prisma.user.upsert({
+      where: { email },
+      create: { email },
+      update: { lastLoginAt: new Date() },
+    });
+
     const res = NextResponse.json({ ok: true });
-    res.cookies.set(sessionCookie(email));
+    res.cookies.set(sessionCookie(user.email));
     return res;
   } catch (err) {
     console.error("[api/auth/verify] POST error:", err);
