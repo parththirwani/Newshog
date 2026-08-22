@@ -1,5 +1,5 @@
 import { Worker } from "bullmq";
-import { prisma } from "@newshog/db";
+import { prisma, recordLlmCall, logStage } from "@newshog/db";
 import { ANALYZE_QUEUE, EMAIL_INGEST_QUEUE, MATCH_QUEUE, createConnection, getMatchQueue } from "@newshog/queue";
 import { scrapeArticle } from "./scrape";
 import { analyzeArticle } from "./analyze";
@@ -38,6 +38,10 @@ function buildProfileContext(profile: {
 
 const connection = createConnection();
 
+// Cap LLM-consuming worker concurrency per minute (analyze + match) so a
+// viral-story spike degrades to queue wait rather than a runaway bill.
+const LLM_CALLS_PER_MIN = 60;
+
 // ── Analyze worker ──────────────────────────────────────────────
 
 const analyzeWorker = new Worker(
@@ -45,6 +49,7 @@ const analyzeWorker = new Worker(
   async (job) => {
     const { analysisId } = job.data as { analysisId: string };
     console.log(`[worker] processing analysis ${analysisId}`);
+    logStage("job_start", { analysisId });
 
     const analysis = await prisma.analysis.findUnique({ where: { id: analysisId } });
     if (!analysis) throw new Error(`Analysis ${analysisId} not found`);
@@ -83,7 +88,7 @@ const analyzeWorker = new Worker(
         if (profile) profileContext = buildProfileContext(profile) || undefined;
       }
 
-      const result = await analyzeArticle(scraped.text, scraped.title, profileContext);
+      const result = await analyzeArticle(scraped.text, scraped.title, profileContext, analysisId);
 
       await prisma.analysis.update({
         where: { id: analysisId },
@@ -114,7 +119,7 @@ const analyzeWorker = new Worker(
       });
     }
   },
-  { connection: createConnection(), concurrency: 2 },
+  { connection: createConnection(), concurrency: 2, limiter: { max: LLM_CALLS_PER_MIN, duration: 60_000 } },
 );
 
 // ── Match worker ────────────────────────────────────────────────
@@ -164,7 +169,7 @@ const matchWorker = new Worker(
       expiresAt: r.expiresAt?.toISOString() ?? undefined,
     })) satisfies JournalistRequest[];
 
-    const matches = await matchRequestsToAnalysis(angles, profileContext, typedRequests);
+    const matches = await matchRequestsToAnalysis(angles, profileContext, typedRequests, analysisId);
 
     for (const m of matches) {
       await prisma.analysisJournalistMatch.upsert({
@@ -185,7 +190,7 @@ const matchWorker = new Worker(
 
     console.log(`[worker] matched ${matches.length} requests for ${analysisId}`);
   },
-  { connection: createConnection(), concurrency: 2 },
+  { connection: createConnection(), concurrency: 2, limiter: { max: LLM_CALLS_PER_MIN, duration: 60_000 } },
 );
 
 // ── Email ingest worker ─────────────────────────────────────────

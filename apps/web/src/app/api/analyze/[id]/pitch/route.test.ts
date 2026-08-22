@@ -15,7 +15,10 @@ const prismaMock = {
   analysisJournalistMatch: { findFirst: vi.fn() },
 };
 
-vi.mock("@newshog/db", () => ({ prisma: prismaMock }));
+vi.mock("@newshog/db", () => ({
+  prisma: prismaMock,
+  logStage: vi.fn(),
+}));
 vi.mock("@/lib/pitch", () => ({
   generatePitch: vi.fn(async () => "Subject: test pitch\n\nBody."),
 }));

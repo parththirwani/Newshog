@@ -6,6 +6,7 @@ const CLIENT_EVENTS = new Set([
   "angle_copied",
   "pitch_copied",
   "result_shared",
+  "medialyst_clicked",
 ]);
 
 export const MAX_EVENT_NAME_LEN = 64;

@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { OPENROUTER_BASE_URL, LLM_MODEL } from "@newshog/shared";
 import type { ExpertiseSummary, CompanyContext } from "@newshog/shared";
+import { recordLlmCall } from "@newshog/db";
 import { loadPrompt } from "./prompts";
 
 const client = new OpenAI({
@@ -66,6 +67,8 @@ export async function summarizeIndividualProfile(
     ],
   });
 
+  await recordLlmCall("profile", response.usage);
+
   const toolCall = response.choices[0]?.message.tool_calls?.[0];
   if (!toolCall?.function.arguments) {
     throw new Error("No tool call in response");
@@ -98,6 +101,8 @@ export async function summarizeCompanyProfile(
       { role: "user", content: `Analyze this company:\n\n${description}${websiteSection}` },
     ],
   });
+
+  await recordLlmCall("profile", response.usage);
 
   const toolCall = response.choices[0]?.message.tool_calls?.[0];
   if (!toolCall?.function.arguments) {

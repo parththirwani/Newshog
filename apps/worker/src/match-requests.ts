@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { OPENROUTER_BASE_URL, LLM_MODEL } from "@newshog/shared";
 import type { Angle, JournalistRequest } from "@newshog/shared";
+import { recordLlmCall } from "@newshog/db";
 
 let client: OpenAI;
 function getClient() {
@@ -43,6 +44,7 @@ export async function matchRequestsToAnalysis(
   angles: Angle[],
   profileContext: string | null,
   requests: JournalistRequest[],
+  analysisId?: string,
 ): Promise<MatchResult[]> {
   if (requests.length === 0) return [];
 
@@ -74,6 +76,8 @@ export async function matchRequestsToAnalysis(
       },
     ],
   });
+
+  await recordLlmCall("match", response.usage, analysisId);
 
   const toolCall = response.choices[0]?.message.tool_calls?.[0];
   if (!toolCall?.function.arguments) return [];

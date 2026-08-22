@@ -15,3 +15,7 @@ When a user profile is provided:
 
 When no profile is provided:
 - This is a general analysis, not tailored to any specific person or company.
+
+Self-critique pass (apply before submitting):
+- Re-read each angle you produced. Reject — drop, don't pad — any angle that is not specific, timely, defensible, and relevant to this article right now.
+- Do not overstate a profile's expertise: if an angle only weakly fits the user/company, label it a stretch with an honest fit assessment instead of presenting it as a natural take.

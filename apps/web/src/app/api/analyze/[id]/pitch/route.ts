@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@newshog/db";
+import { prisma, logStage } from "@newshog/db";
 import { generatePitch } from "@/lib/pitch";
 import { isProfileOwner, resolveOwnerProfileId } from "@/lib/owner";
 import type { Angle, ExpertiseSummary, CompanyContext } from "@newshog/shared";
@@ -36,8 +36,8 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const { id } = await params;
   try {
-    const { id } = await params;
     const body = await request.json().catch(() => ({}));
     const selectedAngle = typeof body?.angle === "string" ? body.angle : undefined;
 
@@ -89,6 +89,7 @@ export async function POST(
       selectedAngle,
       profileContext,
       opportunity,
+      analysisId: analysis.id,
     });
 
     const saved = await prisma.analysis.update({
@@ -99,6 +100,7 @@ export async function POST(
 
     return NextResponse.json(saved);
   } catch (err) {
+    logStage("pitch_failed", { analysisId: id });
     console.error("[api/analyze/:id/pitch] POST error:", err);
     return NextResponse.json({ error: "Failed to generate pitch." }, { status: 500 });
   }

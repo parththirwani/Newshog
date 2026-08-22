@@ -7,7 +7,7 @@ import { SiteHeader } from "@/components/landing/SiteHeader";
 import { SiteFooter } from "@/components/landing/SiteFooter";
 import { SCORE_THRESHOLD_LOW, SCORE_THRESHOLD_HIGH } from "@newshog/shared";
 import type { Analysis, Angle, AnalysisJournalistMatch } from "@newshog/shared";
-import { band, relativeTime } from "@/lib/result-utils";
+import { band, relativeTime, nextAction } from "@/lib/result-utils";
 import { trackClient } from "@/lib/analytics-client";
 
 const btnSecondary =
@@ -28,8 +28,29 @@ export function ResultView({ id, owner }: { id: string; owner: boolean }) {
   const [pitchLoading, setPitchLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
+  const [profileType, setProfileType] = useState<string | null>(null);
   const generatedRef = useRef(false);
   const trackedCompleteRef = useRef(false);
+
+  useEffect(() => {
+    fetch("/api/profile")
+      .then((r) => r.json())
+      .then((data) => setProfileType(data?.type ?? null))
+      .catch(() => {});
+  }, []);
+
+  const medialystUrl = process.env.NEXT_PUBLIC_MEDIALYST_URL;
+  const medialystHref = medialystUrl
+    ? profileType
+      ? `${medialystUrl}?type=${profileType}`
+      : medialystUrl
+    : null;
+
+  const openMedialyst = useCallback(() => {
+    trackClient("medialyst_clicked", { type: profileType ?? "none" });
+    // ponytail: Medialyst signup-attribution hook — wire when their side
+    // delivers a callback; the medialyst_clicked event feed is the paper trail.
+  }, [profileType]);
 
   const fetchStatus = useCallback(async (silent = false) => {
     try {
@@ -355,6 +376,19 @@ export function ResultView({ id, owner }: { id: string; owner: boolean }) {
               )}
             </section>
 
+            <section className="mt-10">
+              <h2 className="text-xs font-semibold tracking-[0.2em] uppercase text-muted-foreground">
+                Next action
+              </h2>
+              <div className="mt-3 rounded-xl border border-border bg-card p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <p className="font-medium tracking-[-0.01em]">{nextAction(score, matchCount ?? 0).timing}</p>
+                  <span className="font-mono text-xs text-muted-foreground">Suggested window</span>
+                </div>
+                <p className="mt-2 text-sm leading-relaxed text-foreground/85">{nextAction(score, matchCount ?? 0).action}</p>
+              </div>
+            </section>
+
             {owner ? (
               <section className="mt-10">
                 <div className="flex items-center justify-between gap-4">
@@ -451,6 +485,21 @@ export function ResultView({ id, owner }: { id: string; owner: boolean }) {
                 >
                   Personalize this for me →
                 </Link>
+              </section>
+            )}
+
+            {medialystHref && (
+              <section className="mt-10 rounded-xl border border-accent-strong/40 bg-card p-5 text-center">
+                <p className="text-sm text-muted-foreground">
+                  Want this automatically for every story, using your profile?
+                </p>
+                <a
+                  href={medialystHref}
+                  onClick={openMedialyst}
+                  className="mt-2 inline-block text-sm font-medium text-accent-strong hover:underline"
+                >
+                  Medialyst →
+                </a>
               </section>
             )}
           </>

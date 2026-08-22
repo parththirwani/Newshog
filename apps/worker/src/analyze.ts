@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { OPENROUTER_BASE_URL, LLM_MODEL, LLM_MAX_TOKENS, LLM_MAX_INPUT_CHARS, MAX_ANGLES } from "@newshog/shared";
 import type { Angle, LlmAnalysis } from "@newshog/shared";
+import { recordLlmCall } from "@newshog/db";
 
 const client = new OpenAI({
   baseURL: OPENROUTER_BASE_URL,
@@ -49,6 +50,7 @@ export async function analyzeArticle(
   text: string,
   title: string | null,
   profileContext?: string,
+  analysisId?: string,
 ): Promise<LlmAnalysis> {
   const truncated = text.slice(0, LLM_MAX_INPUT_CHARS);
   const titleLine = title ? `Article title: ${title}\n\n` : "";
@@ -66,6 +68,9 @@ export async function analyzeArticle(
       { role: "user", content: `${titleLine}Analyze this article:\n\n${truncated}${profileSection}` },
     ],
   });
+
+  // Usage is recorded fire-and-forget; a DB hiccup must not fail the analysis.
+  await recordLlmCall("analysis", response.usage, analysisId);
 
   const toolCall = response.choices[0]?.message.tool_calls?.[0];
   if (!toolCall?.function.arguments) {

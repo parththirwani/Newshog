@@ -102,9 +102,25 @@ model Analysis {
   updatedAt      DateTime       @updatedAt @map("updated_at")
 
   profile Profile? @relation(fields: [profileId], references: [id])
-  matches AnalysisJournalistMatch[]
+  matches  AnalysisJournalistMatch[]
+  llmCalls LLMCall[]
 
+  @@index([url, profileId, status])
   @@map("analyses")
+}
+
+model LLMCall {
+  id               String   @id @default(cuid())
+  stage            String
+  promptTokens     Int      @map("prompt_tokens")
+  completionTokens Int      @map("completion_tokens")
+  analysisId       String?  @map("analysis_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  analysis Analysis? @relation(fields: [analysisId], references: [id], onDelete: SetNull)
+
+  @@index([stage, createdAt])
+  @@map("llm_calls")
 }
 
 model JournalistRequest {

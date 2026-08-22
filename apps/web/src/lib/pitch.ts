@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { OPENROUTER_BASE_URL, LLM_MODEL, LLM_MAX_TOKENS, LLM_MAX_INPUT_CHARS } from "@newshog/shared";
 import type { Angle } from "@newshog/shared";
+import { recordLlmCall } from "@newshog/db";
 import { loadPrompt } from "./prompts";
 
 const client = new OpenAI({
@@ -17,6 +18,7 @@ export interface PitchInput {
   selectedAngle?: string;
   profileContext?: string;
   opportunity?: { requesterName?: string; outlet?: string; topicText: string };
+  analysisId?: string;
 }
 
 export async function generatePitch(input: PitchInput): Promise<string> {
@@ -51,5 +53,7 @@ export async function generatePitch(input: PitchInput): Promise<string> {
 
   const pitch = response.choices[0]?.message.content?.trim();
   if (!pitch) throw new Error("No pitch generated");
+
+  await recordLlmCall("pitch", response.usage, input.analysisId);
   return pitch;
 }

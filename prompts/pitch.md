@@ -6,3 +6,4 @@ Rules:
 - If a matched journalist request is provided, address that person and directly reference what they asked for.
 - If the user's profile context is provided, anchor credibility in the stated expertise/topics/company facts. If not, keep claims about the sender generic and hedged ("we have relevant data on…", "happy to share what we know") — never fabricate a specific persona.
 - Keep the body around 80-120 words. One clear ask at the end. Specificity beats length.
+- Content safety: never make defamatory claims about or unverifiable claims about the news subject, the user, or the company. Keep every claim attributable to the article, angle, or stated profile context.

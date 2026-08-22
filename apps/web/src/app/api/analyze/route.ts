@@ -3,6 +3,8 @@ import { prisma } from "@newshog/db";
 import { getAnalyzeQueue, ANALYZE_QUEUE } from "@newshog/queue";
 import { rateLimit, clientIp, ANALYZE_RATE_LIMIT, ANALYZE_WINDOW_MS } from "@/lib/rate-limit";
 import { trackServer } from "@/lib/analytics";
+import { normalizeUrl } from "@/lib/url";
+import { ANALYSIS_DEDUPE_HOURS } from "@newshog/shared";
 
 function isValidUrl(raw: string): boolean {
   try {
@@ -33,8 +35,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid URL. Provide a valid http(s) URL." }, { status: 400 });
     }
 
+    const normalizedUrl = normalizeUrl(url);
+
+    // Dedupe: don't re-run the expensive pipeline for a URL already analyzed
+    // in the window. Escapes via DELETE then POST again if it goes stale.
+    const recent = await prisma.analysis.findFirst({
+      where: {
+        url: normalizedUrl,
+        profileId: profileId || null,
+        status: "analyzed",
+        createdAt: { gt: new Date(Date.now() - ANALYSIS_DEDUPE_HOURS * 60 * 60 * 1000) },
+      },
+      select: { id: true },
+    });
+    if (recent) {
+      trackServer("url_deduped", { profileId: profileId ?? null });
+      return NextResponse.json({ id: recent.id, deduped: true }, { status: 201 });
+    }
+
     const analysis = await prisma.analysis.create({
-      data: { url, status: "queued", profileId: profileId || null },
+      data: { url: normalizedUrl, status: "queued", profileId: profileId || null },
     });
 
     const queue = getAnalyzeQueue();

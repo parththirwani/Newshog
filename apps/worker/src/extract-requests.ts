@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { OPENROUTER_BASE_URL, LLM_MODEL } from "@newshog/shared";
+import { recordLlmCall } from "@newshog/db";
 
 let client: OpenAI;
 function getClient() {
@@ -65,6 +66,8 @@ export async function extractJournalistRequests(
       },
     ],
   });
+
+  await recordLlmCall("extract", response.usage);
 
   const toolCall = response.choices[0]?.message.tool_calls?.[0];
   if (!toolCall?.function.arguments) return [];

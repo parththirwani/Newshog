@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { band, relativeTime } from "./result-utils";
+import { band, relativeTime, nextAction } from "./result-utils";
 
 describe("band", () => {
   it("maps scores below low threshold to Skip", () => {
@@ -37,5 +37,28 @@ describe("relativeTime", () => {
 
   it("reports days after 24 hours", () => {
     expect(relativeTime("2026-08-19T12:00:00Z", now)).toBe("3d ago");
+  });
+});
+
+describe("nextAction", () => {
+  it("tells high scorers to pitch soon", () => {
+    const { timing, action } = nextAction(80, 0);
+    expect(timing).toBe("Now–48h");
+    expect(action).toContain("48 hours");
+  });
+
+  it("tells mid scorers to watch", () => {
+    const { timing } = nextAction(45, 0);
+    expect(timing).toBe("This week");
+  });
+
+  it("tells low scorers to skip", () => {
+    const { timing } = nextAction(10, 0);
+    expect(timing).toBe("Skip");
+  });
+
+  it("mentions open opportunities when matches exist", () => {
+    const { action } = nextAction(70, 2);
+    expect(action).toContain("2 open opportunities");
   });
 });

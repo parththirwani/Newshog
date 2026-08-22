@@ -18,7 +18,7 @@ const prismaMock = {
   },
 };
 
-vi.mock("@newshog/db", () => ({ prisma: prismaMock }));
+vi.mock("@newshog/db", () => ({ prisma: prismaMock, logStage: vi.fn() }));
 
 const scrapeMock = vi.fn();
 vi.mock("../scrape", () => ({ scrapeArticle: scrapeMock }));
@@ -161,7 +161,7 @@ describe("pipeline processor (analyze worker)", () => {
     scrapeMock.mockResolvedValue({ title: "Scraped Title", text: "Full article body", mode: "full" });
     analyzeMock.mockResolvedValue({ score: 50, why_now: "ok", angles: [] });
     await capturedProcessors["analyze-test"]({ data: { analysisId: "abc-123" } });
-    expect(analyzeMock).toHaveBeenCalledWith("Full article body", "Scraped Title", undefined);
+    expect(analyzeMock).toHaveBeenCalledWith("Full article body", "Scraped Title", undefined, "abc-123");
   });
 
   it("fetches profile context when analysis has profileId", async () => {
@@ -175,7 +175,7 @@ describe("pipeline processor (analyze worker)", () => {
 
     await capturedProcessors["analyze-test"]({ data: { analysisId: "abc-123" } });
 
-    expect(analyzeMock).toHaveBeenCalledWith("body", "T", expect.stringContaining("Topics: AI, startups"));
+    expect(analyzeMock).toHaveBeenCalledWith("body", "T", expect.stringContaining("Topics: AI, startups"), "abc-123");
   });
 
   it("does not pass profile context when analysis has no profileId", async () => {
@@ -184,7 +184,7 @@ describe("pipeline processor (analyze worker)", () => {
 
     await capturedProcessors["analyze-test"]({ data: { analysisId: "abc-123" } });
 
-    expect(analyzeMock).toHaveBeenCalledWith("body", "T", undefined);
+    expect(analyzeMock).toHaveBeenCalledWith("body", "T", undefined, "abc-123");
   });
 });
 
@@ -264,6 +264,7 @@ describe("match worker", () => {
       mockAnalysisWithAngles.angles,
       null,
       expect.arrayContaining([expect.objectContaining({ id: "req-1", topicText: "AI funding experts" })]),
+      "abc-123",
     );
   });
 
@@ -283,6 +284,7 @@ describe("match worker", () => {
       expect.any(Array),
       expect.stringContaining("Company: Acme Corp"),
       expect.any(Array),
+      "abc-123",
     );
   });
 
