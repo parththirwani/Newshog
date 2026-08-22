@@ -26,6 +26,12 @@ enum ProfileType {
   enterprise
 }
 
+enum SourcePlatform {
+  source_of_sources
+  help_a_b2b_writer
+  sourcebottle
+}
+
 model Profile {
   id         String      @id @default(cuid())
   type       ProfileType
@@ -95,6 +101,37 @@ model Analysis {
   updatedAt      DateTime       @updatedAt @map("updated_at")
 
   profile Profile? @relation(fields: [profileId], references: [id])
+  matches AnalysisJournalistMatch[]
 
   @@map("analyses")
+}
+
+model JournalistRequest {
+  id              String         @id @default(cuid())
+  sourcePlatform  SourcePlatform @map("source_platform")
+  requesterName   String?        @map("requester_name")
+  outlet          String?
+  topicText       String         @map("topic_text")
+  deadline        DateTime?
+  replyContact    String?        @map("reply_contact")
+  rawEmailRef     String?        @map("raw_email_ref")
+  ingestedAt      DateTime       @default(now()) @map("ingested_at")
+  expiresAt       DateTime?      @map("expires_at")
+
+  matches AnalysisJournalistMatch[]
+
+  @@map("journalist_requests")
+}
+
+model AnalysisJournalistMatch {
+  analysisId          String @map("analysis_id")
+  journalistRequestId String @map("journalist_request_id")
+  matchRationale      String @map("match_rationale")
+  matchedAt           DateTime @default(now()) @map("matched_at")
+
+  analysis          Analysis          @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  journalistRequest JournalistRequest @relation(fields: [journalistRequestId], references: [id], onDelete: Cascade)
+
+  @@id([analysisId, journalistRequestId])
+  @@map("analysis_journalist_matches")
 }

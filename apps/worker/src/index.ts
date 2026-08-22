@@ -1,9 +1,12 @@
 import { Worker } from "bullmq";
 import { prisma } from "@newshog/db";
-import { ANALYZE_QUEUE, createConnection } from "@newshog/queue";
+import { ANALYZE_QUEUE, EMAIL_INGEST_QUEUE, MATCH_QUEUE, createConnection, getMatchQueue } from "@newshog/queue";
 import { scrapeArticle } from "./scrape";
 import { analyzeArticle } from "./analyze";
-import type { ExpertiseSummary, CompanyContext } from "@newshog/shared";
+import { fetchDigestEmails, markEmailsSeen } from "./email-fetch";
+import { extractJournalistRequests } from "./extract-requests";
+import { matchRequestsToAnalysis } from "./match-requests";
+import type { ExpertiseSummary, CompanyContext, JournalistRequest } from "@newshog/shared";
 
 function buildProfileContext(profile: {
   type: string;
@@ -33,7 +36,11 @@ function buildProfileContext(profile: {
   return "";
 }
 
-const worker = new Worker(
+const connection = createConnection();
+
+// ── Analyze worker ──────────────────────────────────────────────
+
+const analyzeWorker = new Worker(
   ANALYZE_QUEUE,
   async (job) => {
     const { analysisId } = job.data as { analysisId: string };
@@ -89,6 +96,14 @@ const worker = new Worker(
       });
 
       console.log(`[worker] analyzed ${analysisId} (score: ${result.score})`);
+
+      // Enqueue journalist request matching — a failure here must not mark the
+      // already-completed analysis as failed.
+      try {
+        await getMatchQueue().add("match", { analysisId }, { jobId: `match-${analysisId}` });
+      } catch (err) {
+        console.error(`[worker] failed to enqueue match for ${analysisId}:`, err);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`[worker] failed ${analysisId}:`, message);
@@ -99,10 +114,158 @@ const worker = new Worker(
       });
     }
   },
-  {
-    connection: createConnection(),
-    concurrency: 2,
-  },
+  { connection: createConnection(), concurrency: 2 },
 );
 
-console.log("[worker] ready — listening on queue:", ANALYZE_QUEUE);
+// ── Match worker ────────────────────────────────────────────────
+
+const matchWorker = new Worker(
+  MATCH_QUEUE,
+  async (job) => {
+    const { analysisId } = job.data as { analysisId: string };
+    console.log(`[worker] matching requests for analysis ${analysisId}`);
+
+    const analysis = await prisma.analysis.findUnique({ where: { id: analysisId } });
+    if (!analysis || !analysis.angles) return;
+
+    // Fetch all non-expired journalist requests
+    const now = new Date();
+    const requests = await prisma.journalistRequest.findMany({
+      where: {
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+    });
+
+    if (requests.length === 0) {
+      console.log(`[worker] no open requests for ${analysisId}, skipping match`);
+      return;
+    }
+
+    // Build profile context if profile exists
+    let profileContext: string | null = null;
+    if (analysis.profileId) {
+      const profile = await prisma.profile.findUnique({
+        where: { id: analysis.profileId },
+        include: { individual: true, enterprise: true },
+      });
+      if (profile) profileContext = buildProfileContext(profile) || null;
+    }
+
+    const angles = analysis.angles as unknown as import("@newshog/shared").Angle[];
+    const typedRequests = requests.map((r) => ({
+      id: r.id,
+      sourcePlatform: r.sourcePlatform as import("@newshog/shared").SourcePlatform,
+      requesterName: r.requesterName ?? undefined,
+      outlet: r.outlet ?? undefined,
+      topicText: r.topicText,
+      deadline: r.deadline?.toISOString() ?? undefined,
+      replyContact: r.replyContact ?? undefined,
+      ingestedAt: r.ingestedAt.toISOString(),
+      expiresAt: r.expiresAt?.toISOString() ?? undefined,
+    })) satisfies JournalistRequest[];
+
+    const matches = await matchRequestsToAnalysis(angles, profileContext, typedRequests);
+
+    for (const m of matches) {
+      await prisma.analysisJournalistMatch.upsert({
+        where: {
+          analysisId_journalistRequestId: {
+            analysisId,
+            journalistRequestId: m.journalist_request_id,
+          },
+        },
+        create: {
+          analysisId,
+          journalistRequestId: m.journalist_request_id,
+          matchRationale: m.match_rationale,
+        },
+        update: { matchRationale: m.match_rationale },
+      });
+    }
+
+    console.log(`[worker] matched ${matches.length} requests for ${analysisId}`);
+  },
+  { connection: createConnection(), concurrency: 2 },
+);
+
+// ── Email ingest worker ─────────────────────────────────────────
+
+const emailIngestWorker = new Worker(
+  EMAIL_INGEST_QUEUE,
+  async () => {
+    console.log("[worker] starting email digest ingestion");
+
+    const emails = await fetchDigestEmails();
+    console.log(`[worker] fetched ${emails.length} digest emails`);
+
+    const processedUids: number[] = [];
+
+    for (const email of emails) {
+      // One bad email (parse error, LLM hiccup, bad deadline) must not abort
+      // the rest of the batch — it just retries next poll.
+      try {
+        const requests = await extractJournalistRequests(email.text || email.subject);
+        console.log(`[worker] extracted ${requests.length} requests from: ${email.subject}`);
+
+        for (const r of requests) {
+          const recentDuplicate = await prisma.journalistRequest.findFirst({
+            where: {
+              sourcePlatform: email.platform,
+              topicText: r.topic_text,
+              ingestedAt: { gt: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+            },
+          });
+          if (recentDuplicate) continue;
+
+          // deadline also starts as "ISO 8601 or natural language" from the
+          // LLM tool schema, so guard against unparseable values.
+          const deadline = r.deadline && !Number.isNaN(Date.parse(r.deadline)) ? new Date(r.deadline) : null;
+
+          await prisma.journalistRequest.create({
+            data: {
+              sourcePlatform: email.platform,
+              requesterName: r.requester_name,
+              outlet: r.outlet,
+              topicText: r.topic_text,
+              deadline,
+              replyContact: r.reply_contact,
+              rawEmailRef: email.subject,
+              expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 day expiry
+            },
+          });
+        }
+
+        processedUids.push(email.uid);
+      } catch (err) {
+        console.error(`[worker] failed to ingest email "${email.subject}":`, err);
+      }
+    }
+
+    // Flag seen only after successful persistence so a failed email retries.
+    if (processedUids.length > 0) {
+      await markEmailsSeen(processedUids);
+    }
+
+    console.log("[worker] email digest ingestion complete");
+  },
+  { connection: createConnection(), concurrency: 1 },
+);
+
+// ── Schedule email ingest every 4 hours ────────────────────────
+
+import { Queue } from "bullmq";
+
+async function scheduleEmailIngest() {
+  const queue = new Queue(EMAIL_INGEST_QUEUE, { connection });
+  const existingJobs = await queue.getJobSchedulers();
+  const hasScheduler = existingJobs.some((j) => j.name === "email-digest");
+  if (!hasScheduler) {
+    await queue.upsertJobScheduler("email-digest", { every: 4 * 60 * 60 * 1000 });
+    console.log("[worker] scheduled email digest ingestion every 4h");
+  }
+  await queue.close();
+}
+
+scheduleEmailIngest().catch(console.error);
+
+console.log("[worker] ready — listening on queues:", ANALYZE_QUEUE, EMAIL_INGEST_QUEUE, MATCH_QUEUE);

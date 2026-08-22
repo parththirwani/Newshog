@@ -9,4 +9,7 @@ export type {
   CompanyContext,
   IndividualProfileData,
   EnterpriseProfileData,
+  SourcePlatform,
+  JournalistRequest,
+  AnalysisJournalistMatch,
 } from "../types";

@@ -20,6 +20,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [matchCount, setMatchCount] = useState<number | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopPolling = useCallback(() => {
@@ -39,6 +40,32 @@ export default function Home() {
     return () => stopPolling();
   }, [stopPolling]);
 
+  const pollMatches = useCallback((id: string) => {
+    // The match job runs after "analyzed" status and makes an LLM call, so
+    // retry until it lands. Stop when matches are found or after a few tries
+    // (no matches is a valid empty state, so we just bail silently). The
+    // short retry window means a match ingested just after the poll loop ends
+    // is missed until the next analyze; acceptable for now.
+    let attempts = 0;
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/analyze/${id}/matches`);
+        const matches = await res.json();
+        if (Array.isArray(matches) && matches.length > 0) {
+          setMatchCount(matches.length);
+          stopPolling();
+        } else if (attempts >= 4) {
+          setMatchCount(0);
+          stopPolling();
+        }
+        attempts++;
+      } catch {
+        setMatchCount(0);
+        stopPolling();
+      }
+    }, 1500);
+  }, [stopPolling]);
+
   const pollStatus = useCallback(
     (id: string) => {
       stopPolling();
@@ -50,6 +77,7 @@ export default function Home() {
           if (data.status === "analyzed" || data.status === "failed") {
             stopPolling();
             setLoading(false);
+            if (data.status === "analyzed") pollMatches(id);
           }
         } catch {
           stopPolling();
@@ -58,7 +86,7 @@ export default function Home() {
         }
       }, 1500);
     },
-    [stopPolling],
+    [stopPolling, pollMatches],
   );
 
   const handleAnalyze = useCallback(
@@ -66,6 +94,7 @@ export default function Home() {
       setError("");
       setResult(null);
       setLoading(true);
+      setMatchCount(null);
 
       try {
         const res = await fetch("/api/analyze", {
@@ -94,6 +123,7 @@ export default function Home() {
     setError("");
     setResult(null);
     setLoading(true);
+    setMatchCount(null);
 
     try {
       await fetch(`/api/analyze/${result.id}`, { method: "DELETE" });
@@ -160,6 +190,11 @@ export default function Home() {
             </div>
           </div>
           <div className="mt-3 flex gap-2">
+            {matchCount != null && matchCount > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-0.5 text-xs text-accent-strong">
+                {matchCount} open {matchCount === 1 ? "opportunity" : "opportunities"}
+              </span>
+            )}
             {profile && !result.profileId && (
               <button
                 onClick={handleReanalyze}

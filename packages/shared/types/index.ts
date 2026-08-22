@@ -7,3 +7,8 @@ export type {
   IndividualProfileData,
   EnterpriseProfileData,
 } from "./profile";
+export type {
+  SourcePlatform,
+  JournalistRequest,
+  AnalysisJournalistMatch,
+} from "./journalist-request";
