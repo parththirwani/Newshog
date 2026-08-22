@@ -1,19 +1,24 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { SCORE_THRESHOLD_LOW, SCORE_THRESHOLD_HIGH } from "@newshog/shared";
+import type { Angle, Analysis, AnalysisStatus } from "@newshog/shared";
 
-type JobStatus = "queued" | "scraping" | "scraped" | "failed";
+function scoreColor(score: number): string {
+  if (score >= SCORE_THRESHOLD_HIGH) return "text-green-400";
+  if (score >= SCORE_THRESHOLD_LOW) return "text-yellow-400";
+  return "text-red-400";
+}
 
-interface AnalysisResult {
-  id: string;
-  status: JobStatus;
-  articleTitle?: string;
-  error?: string;
+function scoreLabel(score: number): string {
+  if (score >= SCORE_THRESHOLD_HIGH) return "Strong opportunity";
+  if (score >= SCORE_THRESHOLD_LOW) return "Consider";
+  return "Don't newsjack this";
 }
 
 export default function Home() {
   const [url, setUrl] = useState("");
-  const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [result, setResult] = useState<Analysis | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -37,7 +42,7 @@ export default function Home() {
           const res = await fetch(`/api/analyze/${id}/status`);
           const data = await res.json();
           setResult(data);
-          if (data.status === "scraped" || data.status === "failed") {
+          if (data.status === "analyzed" || data.status === "failed") {
             stopPolling();
             setLoading(false);
           }
@@ -110,28 +115,55 @@ export default function Home() {
       {loading && (
         <div className="mt-8 flex items-center gap-3 text-gray-400">
           <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
-          Analyzing the story&hellip;
-          {result && (
-            <span className="text-xs text-gray-600 ml-2">{result.status}</span>
-          )}
+          {result?.status === "scraping" && "Scraping the article\u2026"}
+          {result?.status === "scraped" && "Scraped. Starting analysis\u2026"}
+          {result?.status === "analyzing" && "Analyzing the story\u2026"}
+          {!result?.status || result.status === "queued" && "Queued\u2026"}
         </div>
       )}
 
-      {!loading && result?.status === "scraped" && (
-        <div className="mt-8 rounded-lg bg-gray-900 border border-gray-800 p-6">
-          <h2 className="font-semibold text-lg mb-1">
-            {result.articleTitle || "Article extracted"}
-          </h2>
-          <p className="text-sm text-green-400">
-            Successfully scraped and stored. Ready for AI analysis (Phase 2).
-          </p>
+      {!loading && result?.status === "analyzed" && result.score != null && (
+        <div className="mt-8 space-y-6">
+          <div className="rounded-lg bg-gray-900 border border-gray-800 p-6">
+            <div className="flex items-baseline gap-3 mb-2">
+              <span className={`text-4xl font-bold ${scoreColor(result.score)}`}>
+                {result.score}
+              </span>
+              <span className="text-sm text-gray-400">/ 100</span>
+            </div>
+            <p className={`text-sm font-medium ${scoreColor(result.score)}`}>
+              {scoreLabel(result.score)}
+            </p>
+            <p className="text-sm text-gray-300 mt-2">{result.articleTitle}</p>
+          </div>
+
+          <div className="rounded-lg bg-gray-900 border border-gray-800 p-6">
+            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-2">Why This Matters</h2>
+            <p className="text-gray-200">{result.whyNow}</p>
+          </div>
+
+          {result.angles && result.angles.length > 0 && (
+            <div className="rounded-lg bg-gray-900 border border-gray-800 p-6">
+              <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4">Best Angles</h2>
+              <div className="space-y-4">
+                {result.angles.map((angle, i) => (
+                  <div key={i} className="border-l-2 border-blue-500 pl-4">
+                    <h3 className="font-medium text-gray-100">{angle.title}</h3>
+                    <p className="text-sm text-gray-300 mt-1">{angle.why_now}</p>
+                    <p className="text-sm text-gray-400 mt-1">{angle.why_journalists_care}</p>
+                    <p className="text-sm text-blue-400 mt-1 italic">&ldquo;{angle.headline}&rdquo;</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {!loading && result?.status === "failed" && (
         <div className="mt-8 rounded-lg bg-gray-900 border border-gray-800 p-6">
-          <h2 className="font-semibold text-lg mb-1 text-red-400">Extraction failed</h2>
-          <p className="text-sm text-gray-400">{result.error || "Could not extract article content."}</p>
+          <h2 className="font-semibold text-lg mb-1 text-red-400">Analysis failed</h2>
+          <p className="text-sm text-gray-400">{result.error || "Something went wrong."}</p>
         </div>
       )}
     </main>

@@ -9,7 +9,15 @@ export async function GET(
     const { id } = await params;
     const analysis = await prisma.analysis.findUnique({
       where: { id },
-      select: { id: true, status: true, articleTitle: true, error: true },
+      select: {
+        id: true,
+        status: true,
+        articleTitle: true,
+        score: true,
+        angles: true,
+        whyNow: true,
+        error: true,
+      },
     });
 
     if (!analysis) {

@@ -11,6 +11,8 @@ enum AnalysisStatus {
   queued
   scraping
   scraped
+  analyzing
+  analyzed
   failed
 }
 
@@ -26,6 +28,9 @@ model Analysis {
   articleTitle   String?        @map("article_title")
   rawArticleText String?        @map("raw_article_text")
   extractionMode ExtractionMode? @map("extraction_mode")
+  score          Int?
+  angles         Json?
+  whyNow         String?        @map("why_now")
   error          String?
   createdAt      DateTime       @default(now()) @map("created_at")
   updatedAt      DateTime       @updatedAt @map("updated_at")

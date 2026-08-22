@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@newshog/db";
-import { getAnalyzeQueue } from "@newshog/queue";
+import { getAnalyzeQueue, ANALYZE_QUEUE } from "@newshog/queue";
 
 function isValidUrl(raw: string): boolean {
   try {
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     });
 
     const queue = getAnalyzeQueue();
-    await queue.add("analyze", { analysisId: analysis.id }, { jobId: analysis.id });
+    await queue.add(ANALYZE_QUEUE, { analysisId: analysis.id }, { jobId: analysis.id });
 
     return NextResponse.json({ id: analysis.id }, { status: 201 });
   } catch (err) {
