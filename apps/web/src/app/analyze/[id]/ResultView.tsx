@@ -196,7 +196,7 @@ export function ResultView({ id, owner }: { id: string; owner: boolean }) {
     }
   }, [analysis?.articleTitle]);
 
-  const angles = (analysis?.angles as Angle[] | undefined) ?? [];
+  const angles = Array.isArray(analysis?.angles) ? (analysis?.angles as Angle[]) : [];
   const score = analysis?.score;
   const matchList = matches && Array.isArray(matches) ? matches : null;
   const matchCount = matches ? (Array.isArray(matches) ? matches.length : matches.count) : null;

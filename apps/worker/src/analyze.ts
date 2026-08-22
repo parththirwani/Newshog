@@ -79,6 +79,19 @@ export async function analyzeArticle(
 
   const result = JSON.parse(toolCall.function.arguments) as LlmAnalysis;
   result.score = Math.max(0, Math.min(100, Math.round(result.score)));
-  result.angles = result.angles.slice(0, MAX_ANGLES);
+  result.angles = toAngleArray(result.angles as unknown).slice(0, MAX_ANGLES);
   return result;
+}
+
+// The LLM occasionally wraps a single angle as an object instead of nesting
+// it in an array, or returns garbage strings. Normalize so callers can rely
+// on Angle[].
+function toAngleArray(value: unknown): Angle[] {
+  if (Array.isArray(value)) {
+    return value.filter((v): v is Angle => typeof v === "object" && v !== null && typeof (v as Angle).title === "string");
+  }
+  if (typeof value === "object" && value !== null && typeof (value as Angle).title === "string") {
+    return [value as Angle];
+  }
+  return [];
 }

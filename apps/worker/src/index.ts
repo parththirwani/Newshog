@@ -8,6 +8,12 @@ import { extractJournalistRequests } from "./extract-requests";
 import { matchRequestsToAnalysis } from "./match-requests";
 import type { ExpertiseSummary, CompanyContext, JournalistRequest } from "@newshog/shared";
 
+function stringList(value: unknown): string {
+  if (Array.isArray(value)) return (value as unknown[]).filter((v) => typeof v === "string").join(", ");
+  if (typeof value === "string") return value;
+  return "";
+}
+
 function buildProfileContext(profile: {
   type: string;
   individual?: { expertiseSummary?: unknown } | null;
@@ -16,10 +22,10 @@ function buildProfileContext(profile: {
   if (profile.type === "individual" && profile.individual?.expertiseSummary) {
     const s = profile.individual.expertiseSummary as ExpertiseSummary;
     return [
-      `Topics: ${s.topics.join(", ")}`,
+      `Topics: ${stringList(s.topics)}`,
       `Tone: ${s.tone}`,
-      `Credentials: ${s.credentials.join(", ")}`,
-      `Recurring themes: ${s.recurringThemes.join(", ")}`,
+      `Credentials: ${stringList(s.credentials)}`,
+      `Recurring themes: ${stringList(s.recurringThemes)}`,
     ].join("\n");
   }
   if (profile.type === "enterprise" && profile.enterprise?.companyContext) {
@@ -28,9 +34,9 @@ function buildProfileContext(profile: {
       `Company: ${profile.enterprise.companyName}`,
       `What they do: ${c.whatTheyDo}`,
       `Who they serve: ${c.whoTheyServe}`,
-      `Product categories: ${c.productCategories.join(", ")}`,
+      `Product categories: ${stringList(c.productCategories)}`,
       `Positioning/voice: ${c.positioningVoice}`,
-      `Areas of authority: ${c.areasOfAuthority.join(", ")}`,
+      `Areas of authority: ${stringList(c.areasOfAuthority)}`,
     ].join("\n");
   }
   return "";
@@ -131,7 +137,7 @@ const matchWorker = new Worker(
     console.log(`[worker] matching requests for analysis ${analysisId}`);
 
     const analysis = await prisma.analysis.findUnique({ where: { id: analysisId } });
-    if (!analysis || !analysis.angles) return;
+    if (!analysis || !Array.isArray(analysis.angles)) return;
 
     // Fetch all non-expired journalist requests
     const now = new Date();

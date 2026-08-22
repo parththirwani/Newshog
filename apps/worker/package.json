@@ -2,7 +2,7 @@
   "name": "@newshog/worker",
   "private": true,
   "scripts": {
-    "dev": "bun --watch src/index.ts",
+    "dev": "bun --env-file=../../.env --watch src/index.ts",
     "start": "bun src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest"

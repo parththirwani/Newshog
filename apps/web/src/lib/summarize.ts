@@ -29,6 +29,14 @@ const INDIVIDUAL_TOOL = {
   },
 };
 
+// LLM tool calls occasionally return array fields as a single string.
+// Coerce defensively so callers can rely on string[].
+function toStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) return value.filter((v): v is string => typeof v === "string");
+  if (typeof value === "string" && value.trim()) return [value.trim()];
+  return [];
+}
+
 const ENTERPRISE_TOOL = {
   type: "function" as const,
   function: {
@@ -76,10 +84,10 @@ export async function summarizeIndividualProfile(
 
   const raw = JSON.parse(toolCall.function.arguments);
   return {
-    topics: raw.topics ?? [],
-    tone: raw.tone ?? "",
-    credentials: raw.credentials ?? [],
-    recurringThemes: raw.recurring_themes ?? [],
+    topics: toStringArray(raw.topics),
+    tone: typeof raw.tone === "string" ? raw.tone : "",
+    credentials: toStringArray(raw.credentials),
+    recurringThemes: toStringArray(raw.recurring_themes),
   };
 }
 
@@ -111,10 +119,10 @@ export async function summarizeCompanyProfile(
 
   const raw = JSON.parse(toolCall.function.arguments);
   return {
-    whatTheyDo: raw.what_they_do ?? "",
-    whoTheyServe: raw.who_they_serve ?? "",
-    productCategories: raw.product_categories ?? [],
-    positioningVoice: raw.positioning_voice ?? "",
-    areasOfAuthority: raw.areas_of_authority ?? [],
+    whatTheyDo: typeof raw.what_they_do === "string" ? raw.what_they_do : "",
+    whoTheyServe: typeof raw.who_they_serve === "string" ? raw.who_they_serve : "",
+    productCategories: toStringArray(raw.product_categories),
+    positioningVoice: typeof raw.positioning_voice === "string" ? raw.positioning_voice : "",
+    areasOfAuthority: toStringArray(raw.areas_of_authority),
   };
 }

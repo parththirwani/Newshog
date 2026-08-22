@@ -4,6 +4,12 @@ import { generatePitch } from "@/lib/pitch";
 import { isProfileOwner, resolveOwnerProfileId } from "@/lib/owner";
 import type { Angle, ExpertiseSummary, CompanyContext } from "@newshog/shared";
 
+function stringList(value: unknown): string {
+  if (Array.isArray(value)) return (value as unknown[]).filter((v) => typeof v === "string").join(", ");
+  if (typeof value === "string") return value;
+  return "";
+}
+
 function buildProfileContext(profile: {
   type: string;
   individual?: { expertiseSummary?: unknown } | null;
@@ -12,10 +18,10 @@ function buildProfileContext(profile: {
   if (profile.type === "individual" && profile.individual?.expertiseSummary) {
     const s = profile.individual.expertiseSummary as ExpertiseSummary;
     return [
-      `Topics: ${s.topics.join(", ")}`,
+      `Topics: ${stringList(s.topics)}`,
       `Tone: ${s.tone}`,
-      `Credentials: ${s.credentials.join(", ")}`,
-      `Recurring themes: ${s.recurringThemes.join(", ")}`,
+      `Credentials: ${stringList(s.credentials)}`,
+      `Recurring themes: ${stringList(s.recurringThemes)}`,
     ].join("\n");
   }
   if (profile.type === "enterprise" && profile.enterprise?.companyContext) {
@@ -24,9 +30,9 @@ function buildProfileContext(profile: {
       `Company: ${profile.enterprise.companyName}`,
       `What they do: ${c.whatTheyDo}`,
       `Who they serve: ${c.whoTheyServe}`,
-      `Product categories: ${c.productCategories.join(", ")}`,
+      `Product categories: ${stringList(c.productCategories)}`,
       `Positioning/voice: ${c.positioningVoice}`,
-      `Areas of authority: ${c.areasOfAuthority.join(", ")}`,
+      `Areas of authority: ${stringList(c.areasOfAuthority)}`,
     ].join("\n");
   }
   return "";
@@ -54,7 +60,8 @@ export async function POST(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const angles = (analysis.angles ?? []) as unknown as Angle[];
+    const rawAngles = analysis.angles as unknown;
+    const angles = (Array.isArray(rawAngles) ? rawAngles : []) as Angle[];
 
     let profileContext: string | undefined;
     if (analysis.profileId) {

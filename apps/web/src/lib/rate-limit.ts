@@ -31,3 +31,12 @@ export function clientIp(request: Request): string {
 
 export const ANALYZE_RATE_LIMIT = 10;
 export const ANALYZE_WINDOW_MS = 60 * 60 * 1000;
+
+// Free tier: anonymous visitors get this many analyses (persisted per IP).
+// Logged-in users bypass the cap.
+export const ANON_FREE_LIMIT = 3;
+
+export function anonQuota(used: number): { ok: boolean; remaining: number } {
+  const remaining = Math.max(0, ANON_FREE_LIMIT - used);
+  return { ok: remaining > 0, remaining };
+}

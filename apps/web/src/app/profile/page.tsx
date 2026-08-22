@@ -457,13 +457,14 @@ export default function ProfilePage() {
   );
 }
 
-function SummaryList({ label, items }: { label: string; items: string[] }) {
-  if (!items.length) return null;
+function SummaryList({ label, items }: { label: string; items: string[] | undefined }) {
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) return null;
   return (
     <div className="mb-3">
       <p className="text-xs text-muted-foreground mb-1">{label}</p>
       <div className="flex flex-wrap gap-1.5">
-        {items.map((item, i) => (
+        {list.map((item, i) => (
           <span key={i} className="inline-block rounded-full bg-accent-soft px-2.5 py-0.5 text-xs text-foreground">
             {item}
           </span>

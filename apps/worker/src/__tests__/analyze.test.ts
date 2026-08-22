@@ -121,6 +121,29 @@ describe("analyzeArticle", () => {
     expect(result.angles).toHaveLength(3);
   });
 
+  it("wraps a single angle object into an array", async () => {
+    mockCreate.mockResolvedValue(
+      makeLlmResponse({
+        score: 60,
+        why_now: "ok",
+        angles: { title: "Only angle", why_now: "t", why_journalists_care: "c", headline: "h" },
+      }),
+    );
+
+    const result = await analyzeArticle("text", null);
+    expect(result.angles).toHaveLength(1);
+    expect(result.angles[0].title).toBe("Only angle");
+  });
+
+  it("drops non-array garbage angles", async () => {
+    mockCreate.mockResolvedValue(
+      makeLlmResponse({ score: 60, why_now: "ok", angles: 42 }),
+    );
+
+    const result = await analyzeArticle("text", null);
+    expect(result.angles).toEqual([]);
+  });
+
   it("truncates input text to LLM_MAX_INPUT_CHARS", async () => {
     mockCreate.mockResolvedValue(
       makeLlmResponse({ score: 40, why_now: "ok", angles: [] }),

@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@newshog/db";
 import { getAnalyzeQueue, ANALYZE_QUEUE } from "@newshog/queue";
-import { rateLimit, clientIp, ANALYZE_RATE_LIMIT, ANALYZE_WINDOW_MS } from "@/lib/rate-limit";
+import {
+  rateLimit,
+  clientIp,
+  ANALYZE_RATE_LIMIT,
+  ANALYZE_WINDOW_MS,
+  anonQuota,
+} from "@/lib/rate-limit";
+import { getSessionEmail } from "@/lib/auth";
 import { trackServer } from "@/lib/analytics";
 import { normalizeUrl } from "@/lib/url";
 import { ANALYSIS_DEDUPE_HOURS } from "@newshog/shared";
@@ -53,8 +60,28 @@ export async function POST(request: Request) {
       return NextResponse.json({ id: recent.id, deduped: true }, { status: 201 });
     }
 
+    // Free tier: cap anonymous analyses per IP; logged-in users are unlimited.
+    const email = await getSessionEmail();
+    const ip = clientIp(request);
+    if (!email) {
+      const used = await prisma.analysis.count({ where: { ip, profileId: null } });
+      const quota = anonQuota(used);
+      if (!quota.ok) {
+        trackServer("free_tier_exhausted", { ip });
+        return NextResponse.json(
+          { error: "You've used your 3 free stories. Sign in to keep analyzing." },
+          { status: 402 },
+        );
+      }
+    }
+
     const analysis = await prisma.analysis.create({
-      data: { url: normalizedUrl, status: "queued", profileId: profileId || null },
+      data: {
+        url: normalizedUrl,
+        status: "queued",
+        profileId: profileId || null,
+        ip: email ? null : ip,
+      },
     });
 
     const queue = getAnalyzeQueue();

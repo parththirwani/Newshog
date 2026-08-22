@@ -98,6 +98,7 @@ model Analysis {
   pitch          String?
   error          String?
   profileId      String?        @map("profile_id")
+  ip             String?        @map("ip")
   createdAt      DateTime       @default(now()) @map("created_at")
   updatedAt      DateTime       @updatedAt @map("updated_at")
 
@@ -106,6 +107,7 @@ model Analysis {
   llmCalls LLMCall[]
 
   @@index([url, profileId, status])
+  @@index([ip, profileId])
   @@map("analyses")
 }
 
