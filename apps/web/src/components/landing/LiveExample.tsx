@@ -129,7 +129,7 @@ export function LiveExample() {
                     <div className="rounded-xl border border-border bg-secondary/50 p-5 font-mono text-[13px] leading-relaxed whitespace-pre-line text-foreground/85">
                       {`Subject: cost data on the SMB compliance bill (we have numbers)
 
-Dana — saw your committee piece. We process payroll for 4,100 small
+Dana saw your committee piece. We process payroll for 4,100 small
 businesses, so we can tell you what the 30-day window actually costs:
 $1,840 median per business, and 61% won't make the deadline.
 

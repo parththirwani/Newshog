@@ -80,7 +80,7 @@ export function UrlInput({
           )}
         </button>
       </div>
-      <p className="mt-3 label-mono">No signup &middot; First 3 stories free &middot; ~30s</p>
+      <p className="mt-3 label-mono">First 3 stories free &middot; ~30s</p>
     </form>
   );
 }
