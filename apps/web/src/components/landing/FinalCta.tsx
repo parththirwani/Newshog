@@ -5,15 +5,15 @@ import { UrlInput } from "./UrlInput";
 
 export function FinalCta({ onAnalyze }: { onAnalyze?: (url: string) => void }) {
   return (
-    <section id="cta" className="relative overflow-hidden">
+    <section id="cta" className="relative isolate overflow-hidden">
       <div
         aria-hidden
         className="grid-paper pointer-events-none absolute inset-0 opacity-60 [mask-image:radial-gradient(60%_70%_at_70%_100%,#000,transparent)]"
       />
-      <div className="relative mx-auto max-w-6xl px-5 py-24 lg:py-32">
+      <div className="relative z-10 mx-auto w-full max-w-6xl px-6 py-24 sm:px-8 lg:px-12 lg:py-32">
         <div className="max-w-3xl">
           <span className="label-mono">The window is open right now</span>
-          <h2 className="mt-5 display-xl text-balance">
+          <h2 className="mt-5 display-xl text-balance min-w-0">
             <WordReveal text="Somebody is pitching this story." />
             <span className="text-accent-strong">
               <WordReveal text="Might as well be you." />

@@ -1,6 +1,5 @@
 "use client";
 
-import { ChevronUp } from "lucide-react";
 import { Reveal } from "./Reveal";
 import { useInView, useCountUp } from "@/hooks/use-reveal";
 
@@ -55,17 +54,8 @@ export function ProofStrip() {
             </h2>
             <p className="mt-5 max-w-md leading-relaxed font-light text-muted-foreground">
               Newshog watches 1,900 outlets and every byline on them, so the score reflects what
-              editors are actually chasing right now — not what trended last quarter.
+              editors are actually chasing right now not what trended last quarter.
             </p>
-            <div className="mt-8 inline-flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 elevate">
-              <span className="grid size-9 place-items-center rounded-lg bg-accent-strong text-primary-foreground">
-                <ChevronUp className="size-4" strokeWidth={2.5} />
-              </span>
-              <div>
-                <p className="text-sm font-medium">#1 Product of the Day</p>
-                <p className="label-mono mt-0.5">2,148 upvotes</p>
-              </div>
-            </div>
           </Reveal>
 
           <div className="grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-2">

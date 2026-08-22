@@ -166,6 +166,17 @@
     font-feature-settings: "ss01", "cv01";
   }
 
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    min-width: 0;
+    overflow-wrap: break-word;
+    text-wrap: balance;
+  }
+
   ::selection {
     background: var(--accent-strong);
     color: var(--paper);

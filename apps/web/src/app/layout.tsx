@@ -13,11 +13,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Newshog — Is this story worth newsjacking?",
+  title: "Newshog",
   description:
     "Paste a breaking-news URL and get a newsjack score, ranked angles, matched journalists, and a ready-to-send pitch in about 30 seconds.",
   openGraph: {
-    title: "Newshog — Is this story worth newsjacking?",
+    title: "Newshog",
     description:
       "Paste a breaking-news URL and get a newsjack score, ranked angles, matched journalists, and a ready-to-send pitch in about 30 seconds.",
     type: "website",
