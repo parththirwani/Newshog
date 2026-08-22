@@ -1,0 +1,34 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AnalysisStatus {
+  queued
+  scraping
+  scraped
+  failed
+}
+
+enum ExtractionMode {
+  full
+  limited
+}
+
+model Analysis {
+  id             String         @id @default(cuid())
+  url            String
+  status         AnalysisStatus @default(queued)
+  articleTitle   String?        @map("article_title")
+  rawArticleText String?        @map("raw_article_text")
+  extractionMode ExtractionMode? @map("extraction_mode")
+  error          String?
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  @@map("analyses")
+}

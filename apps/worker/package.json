@@ -1,0 +1,19 @@
+{
+  "name": "@newshog/worker",
+  "private": true,
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts"
+  },
+  "dependencies": {
+    "@newshog/db": "workspace:*",
+    "@newshog/queue": "workspace:*",
+    "bullmq": "^5",
+    "ioredis": "^5",
+    "jsdom": "^26",
+    "@mozilla/readability": "^0.5"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21"
+  }
+}
