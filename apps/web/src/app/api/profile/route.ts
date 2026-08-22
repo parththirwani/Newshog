@@ -5,6 +5,7 @@ import { summarizeIndividualProfile, summarizeCompanyProfile } from "@/lib/summa
 import { fetchXProfile } from "@/lib/x-api";
 import { crawlCompanySite } from "@/lib/crawl";
 import type { ProfileType } from "@newshog/shared";
+import { trackServer } from "@/lib/analytics";
 
 export async function GET() {
   const email = await getSessionEmail();
@@ -71,6 +72,7 @@ export async function POST(request: Request) {
         include: { individual: true },
       });
 
+      trackServer("profile_created", { type: "individual" });
       return NextResponse.json(profile, { status: 201 });
     }
 
@@ -106,10 +108,11 @@ export async function POST(request: Request) {
           },
         },
       },
-      include: { enterprise: true },
-    });
+include: { enterprise: true },
+      });
 
-    return NextResponse.json(profile, { status: 201 });
+      trackServer("profile_created", { type: "enterprise" });
+      return NextResponse.json(profile, { status: 201 });
   } catch (err) {
     console.error("[api/profile] POST error:", err);
     return NextResponse.json({ error: "Failed to create profile." }, { status: 500 });

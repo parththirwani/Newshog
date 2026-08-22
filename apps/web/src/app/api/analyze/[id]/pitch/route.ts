@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@newshog/db";
 import { generatePitch } from "@/lib/pitch";
+import { isProfileOwner, resolveOwnerProfileId } from "@/lib/owner";
 import type { Angle, ExpertiseSummary, CompanyContext } from "@newshog/shared";
 
 function buildProfileContext(profile: {
@@ -44,6 +45,13 @@ export async function POST(
     if (!analysis) return NextResponse.json({ error: "Not found" }, { status: 404 });
     if (!analysis.rawArticleText) {
       return NextResponse.json({ error: "Article not available yet." }, { status: 409 });
+    }
+
+    // Pitch regeneration costs an LLM call — only the owner may burn it on a
+    // personalized analysis. Context-free analyses are publicly editable.
+    const ownerProfileId = await resolveOwnerProfileId();
+    if (!isProfileOwner(analysis.profileId, ownerProfileId)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const angles = (analysis.angles ?? []) as unknown as Angle[];

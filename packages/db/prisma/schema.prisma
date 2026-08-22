@@ -136,3 +136,13 @@ model AnalysisJournalistMatch {
   @@id([analysisId, journalistRequestId])
   @@map("analysis_journalist_matches")
 }
+
+model Event {
+  id        String   @id @default(cuid())
+  name      String
+  props     Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([name])
+  @@map("events")
+}
