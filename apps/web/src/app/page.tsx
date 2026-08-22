@@ -8,12 +8,18 @@ import { HowItWorks } from "@/components/landing/HowItWorks";
 import { ProofStrip } from "@/components/landing/ProofStrip";
 import { FinalCta } from "@/components/landing/FinalCta";
 import { SiteFooter } from "@/components/landing/SiteFooter";
-import type { Analysis, AnalysisStatus } from "@newshog/shared";
+import type { Analysis } from "@newshog/shared";
+
+interface Profile {
+  id: string;
+  type: string;
+}
 
 export default function Home() {
   const [result, setResult] = useState<Analysis | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [profile, setProfile] = useState<Profile | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopPolling = useCallback(() => {
@@ -24,6 +30,12 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    fetch("/api/profile")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && data.id) setProfile(data);
+      })
+      .catch(() => {});
     return () => stopPolling();
   }, [stopPolling]);
 
@@ -77,6 +89,34 @@ export default function Home() {
     [pollStatus],
   );
 
+  const handleReanalyze = useCallback(async () => {
+    if (!result?.url || !profile) return;
+    setError("");
+    setResult(null);
+    setLoading(true);
+
+    try {
+      await fetch(`/api/analyze/${result.id}`, { method: "DELETE" });
+
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: result.url, profileId: profile.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Something went wrong.");
+        setLoading(false);
+        return;
+      }
+      setResult(data);
+      pollStatus(data.id);
+    } catch {
+      setError("Failed to reach server.");
+      setLoading(false);
+    }
+  }, [result, profile, pollStatus]);
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <SiteHeader />
@@ -118,6 +158,24 @@ export default function Home() {
               <p className="text-sm font-medium">{result.articleTitle}</p>
               <p className="text-xs text-muted-foreground">{result.whyNow}</p>
             </div>
+          </div>
+          <div className="mt-3 flex gap-2">
+            {profile && !result.profileId && (
+              <button
+                onClick={handleReanalyze}
+                className="text-xs text-accent-strong hover:underline"
+              >
+                Re-analyze with my profile
+              </button>
+            )}
+            {!profile && (
+              <a
+                href="/profile"
+                className="text-xs text-accent-strong hover:underline"
+              >
+                Personalize this for me
+              </a>
+            )}
           </div>
         </div>
       )}

@@ -48,9 +48,13 @@ const TOOL = {
 export async function analyzeArticle(
   text: string,
   title: string | null,
+  profileContext?: string,
 ): Promise<LlmAnalysis> {
   const truncated = text.slice(0, LLM_MAX_INPUT_CHARS);
   const titleLine = title ? `Article title: ${title}\n\n` : "";
+  const profileSection = profileContext
+    ? `\n\nUser profile for tailoring angles:\n${profileContext}`
+    : "";
 
   const response = await client.chat.completions.create({
     model: LLM_MODEL,
@@ -59,7 +63,7 @@ export async function analyzeArticle(
     tool_choice: { type: "function", function: { name: "submit_analysis" } },
     messages: [
       { role: "system", content: SYSTEM },
-      { role: "user", content: `${titleLine}Analyze this article:\n\n${truncated}` },
+      { role: "user", content: `${titleLine}Analyze this article:\n\n${truncated}${profileSection}` },
     ],
   });
 

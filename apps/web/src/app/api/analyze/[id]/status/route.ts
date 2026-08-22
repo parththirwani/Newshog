@@ -11,12 +11,14 @@ export async function GET(
       where: { id },
       select: {
         id: true,
+        url: true,
         status: true,
         articleTitle: true,
         score: true,
         angles: true,
         whyNow: true,
         error: true,
+        profileId: true,
       },
     });
 

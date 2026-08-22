@@ -14,14 +14,14 @@ function isValidUrl(raw: string): boolean {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { url } = body as { url?: string };
+    const { url, profileId } = body as { url?: string; profileId?: string };
 
     if (!url || typeof url !== "string" || !isValidUrl(url)) {
       return NextResponse.json({ error: "Invalid URL. Provide a valid http(s) URL." }, { status: 400 });
     }
 
     const analysis = await prisma.analysis.create({
-      data: { url, status: "queued" },
+      data: { url, status: "queued", profileId: profileId || null },
     });
 
     const queue = getAnalyzeQueue();

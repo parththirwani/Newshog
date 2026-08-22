@@ -8,12 +8,16 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@mozilla/readability": "^0.6.0",
     "@newshog/db": "workspace:*",
     "@newshog/queue": "workspace:*",
     "@newshog/shared": "workspace:*",
+    "@types/jsdom": "^30.0.0",
     "clsx": "^2.1.1",
+    "jsdom": "^30.0.1",
     "lucide-react": "^1.33.0",
     "next": "^15",
+    "openai": "4",
     "react": "^19",
     "react-dom": "^19",
     "tailwind-merge": "^3.6.0",

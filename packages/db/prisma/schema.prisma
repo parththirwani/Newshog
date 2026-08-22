@@ -21,6 +21,64 @@ enum ExtractionMode {
   limited
 }
 
+enum ProfileType {
+  individual
+  enterprise
+}
+
+model Profile {
+  id         String      @id @default(cuid())
+  type       ProfileType
+  ownerEmail String      @unique @map("owner_email")
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
+
+  individual IndividualProfile?
+  enterprise EnterpriseProfile?
+  analyses   Analysis[]
+
+  @@map("profiles")
+}
+
+model IndividualProfile {
+  profileId        String  @id @map("profile_id")
+  linkedinUrl      String? @map("linkedin_url")
+  xHandle          String? @map("x_handle")
+  freeTextBio      String? @map("free_text_bio")
+  xRawData         Json?   @map("x_raw_data")
+  expertiseSummary Json?   @map("expertise_summary")
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("individual_profiles")
+}
+
+model EnterpriseProfile {
+  profileId          String    @id @map("profile_id")
+  companyName        String    @map("company_name")
+  companyDescription String?   @map("company_description")
+  websiteUrl         String?   @map("website_url")
+  docsUrl            String?   @map("docs_url")
+  pdfText            String?   @map("pdf_text")
+  websiteRawText     String?   @map("website_raw_text")
+  companyContext     Json?     @map("company_context")
+  lastCrawledAt      DateTime? @map("last_crawled_at")
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("enterprise_profiles")
+}
+
+model Token {
+  id        String   @id @default(cuid())
+  email     String
+  code      String
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("tokens")
+}
+
 model Analysis {
   id             String         @id @default(cuid())
   url            String
@@ -32,8 +90,11 @@ model Analysis {
   angles         Json?
   whyNow         String?        @map("why_now")
   error          String?
+  profileId      String?        @map("profile_id")
   createdAt      DateTime       @default(now()) @map("created_at")
   updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  profile Profile? @relation(fields: [profileId], references: [id])
 
   @@map("analyses")
 }

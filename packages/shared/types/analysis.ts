@@ -16,10 +16,12 @@ export type AnalysisStatus =
 
 export interface Analysis {
   id: string;
+  url?: string;
   status: AnalysisStatus;
   articleTitle?: string;
   score?: number;
   angles?: Angle[];
   whyNow?: string;
   error?: string;
+  profileId?: string | null;
 }

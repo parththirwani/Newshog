@@ -5,6 +5,9 @@ const prismaMock = {
     findUnique: vi.fn(),
     update: vi.fn(),
   },
+  profile: {
+    findUnique: vi.fn(),
+  },
 };
 
 vi.mock("@newshog/db", () => ({ prisma: prismaMock }));
@@ -146,6 +149,7 @@ describe("pipeline processor", () => {
     expect(analyzeMock).toHaveBeenCalledWith(
       "Full article body",
       "Scraped Title",
+      undefined,
     );
   });
 

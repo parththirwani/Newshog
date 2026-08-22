@@ -3,6 +3,35 @@ import { prisma } from "@newshog/db";
 import { ANALYZE_QUEUE, createConnection } from "@newshog/queue";
 import { scrapeArticle } from "./scrape";
 import { analyzeArticle } from "./analyze";
+import type { ExpertiseSummary, CompanyContext } from "@newshog/shared";
+
+function buildProfileContext(profile: {
+  type: string;
+  individual?: { expertiseSummary?: unknown } | null;
+  enterprise?: { companyContext?: unknown; companyName?: string } | null;
+}): string {
+  if (profile.type === "individual" && profile.individual?.expertiseSummary) {
+    const s = profile.individual.expertiseSummary as ExpertiseSummary;
+    return [
+      `Topics: ${s.topics.join(", ")}`,
+      `Tone: ${s.tone}`,
+      `Credentials: ${s.credentials.join(", ")}`,
+      `Recurring themes: ${s.recurringThemes.join(", ")}`,
+    ].join("\n");
+  }
+  if (profile.type === "enterprise" && profile.enterprise?.companyContext) {
+    const c = profile.enterprise.companyContext as CompanyContext;
+    return [
+      `Company: ${profile.enterprise.companyName}`,
+      `What they do: ${c.whatTheyDo}`,
+      `Who they serve: ${c.whoTheyServe}`,
+      `Product categories: ${c.productCategories.join(", ")}`,
+      `Positioning/voice: ${c.positioningVoice}`,
+      `Areas of authority: ${c.areasOfAuthority.join(", ")}`,
+    ].join("\n");
+  }
+  return "";
+}
 
 const worker = new Worker(
   ANALYZE_QUEUE,
@@ -38,7 +67,16 @@ const worker = new Worker(
         data: { status: "analyzing" },
       });
 
-      const result = await analyzeArticle(scraped.text, scraped.title);
+      let profileContext: string | undefined;
+      if (analysis.profileId) {
+        const profile = await prisma.profile.findUnique({
+          where: { id: analysis.profileId },
+          include: { individual: true, enterprise: true },
+        });
+        if (profile) profileContext = buildProfileContext(profile) || undefined;
+      }
+
+      const result = await analyzeArticle(scraped.text, scraped.title, profileContext);
 
       await prisma.analysis.update({
         where: { id: analysisId },
