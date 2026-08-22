@@ -1,15 +1,14 @@
-import { readFileSync } from "fs";
-import { join } from "path";
 import OpenAI from "openai";
 import { OPENROUTER_BASE_URL, LLM_MODEL } from "@newshog/shared";
 import type { ExpertiseSummary, CompanyContext } from "@newshog/shared";
+import { loadPrompt } from "./prompts";
 
 const client = new OpenAI({
   baseURL: OPENROUTER_BASE_URL,
   apiKey: process.env.OPENROUTER_API_KEY!,
 });
 
-const SYSTEM = readFileSync(join(process.cwd(), "prompts/profile-summary.md"), "utf-8");
+const SYSTEM = loadPrompt("profile-summary.md");
 
 const INDIVIDUAL_TOOL = {
   type: "function" as const,

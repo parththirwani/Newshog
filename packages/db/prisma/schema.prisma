@@ -95,6 +95,7 @@ model Analysis {
   score          Int?
   angles         Json?
   whyNow         String?        @map("why_now")
+  pitch          String?
   error          String?
   profileId      String?        @map("profile_id")
   createdAt      DateTime       @default(now()) @map("created_at")

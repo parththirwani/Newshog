@@ -17,8 +17,10 @@ export async function GET(
         score: true,
         angles: true,
         whyNow: true,
+        pitch: true,
         error: true,
         profileId: true,
+        updatedAt: true,
       },
     });
 

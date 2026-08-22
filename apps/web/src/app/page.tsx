@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { SiteHeader } from "@/components/landing/SiteHeader";
 import { Hero } from "@/components/landing/Hero";
 import { LiveExample } from "@/components/landing/LiveExample";
@@ -189,7 +191,14 @@ export default function Home() {
               <p className="text-xs text-muted-foreground">{result.whyNow}</p>
             </div>
           </div>
-          <div className="mt-3 flex gap-2">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Link
+              href={`/analyze/${result.id}`}
+              className="inline-flex items-center gap-1.5 rounded-full bg-accent-strong px-4 py-1.5 text-xs font-medium text-primary-foreground transition-[transform,opacity] hover:-translate-y-px"
+            >
+              View full results
+              <ArrowRight className="size-3" strokeWidth={2} />
+            </Link>
             {matchCount != null && matchCount > 0 && (
               <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-0.5 text-xs text-accent-strong">
                 {matchCount} open {matchCount === 1 ? "opportunity" : "opportunities"}

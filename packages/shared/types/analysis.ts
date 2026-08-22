@@ -22,6 +22,8 @@ export interface Analysis {
   score?: number;
   angles?: Angle[];
   whyNow?: string;
+  pitch?: string;
   error?: string;
   profileId?: string | null;
+  updatedAt?: string;
 }
