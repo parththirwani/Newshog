@@ -16,15 +16,58 @@ const btnSecondary =
 
 type MatchResponse = AnalysisJournalistMatch[] | { count: number };
 
-export function ResultView({ id, owner, user }: { id: string; owner: boolean; user: { email: string } | null }) {
-  const [analysis, setAnalysis] = useState<Analysis | null>(null);
+type InitialAnalysis = {
+  id: string;
+  status: string;
+  articleTitle?: string | null;
+  score?: number | null;
+  angles?: unknown;
+  whyNow?: string | null;
+  pitch?: string | null;
+  error?: string | null;
+  profileId?: string | null;
+  updatedAt?: string | Date | null;
+  userId?: string | null;
+};
+
+export function ResultView({
+  id,
+  owner,
+  user,
+  initial,
+}: {
+  id: string;
+  owner: boolean;
+  user: { email: string } | null;
+  initial?: InitialAnalysis;
+}) {
+  const [analysis, setAnalysis] = useState<Analysis | null>(
+    initial
+      ? {
+          id: initial.id,
+          status: initial.status as Analysis["status"],
+          articleTitle: initial.articleTitle ?? undefined,
+          score: initial.score ?? undefined,
+          angles: (Array.isArray(initial.angles) ? initial.angles : undefined) as Angle[] | undefined,
+          whyNow: initial.whyNow ?? undefined,
+          pitch: initial.pitch ?? undefined,
+          error: initial.error ?? undefined,
+          profileId: initial.profileId ?? undefined,
+          updatedAt: initial.updatedAt instanceof Date ? initial.updatedAt.toISOString() : initial.updatedAt ?? undefined,
+        }
+      : null,
+  );
   const [analysisErr, setAnalysisErr] = useState("");
   const [matches, setMatches] = useState<MatchResponse | null>(null);
   const [matchesErr, setMatchesErr] = useState(false);
 
   const [expanded, setExpanded] = useState<number | null>(null);
-  const [draft, setDraft] = useState("");
-  const [selectedAngle, setSelectedAngle] = useState("");
+  const [draft, setDraft] = useState(initial?.pitch ?? "");
+  const [selectedAngle, setSelectedAngle] = useState(
+    initial?.angles && Array.isArray(initial.angles) && initial.angles.length > 0
+      ? (initial.angles as Angle[])[0].title
+      : "",
+  );
   const [pitchErr, setPitchErr] = useState("");
   const [pitchLoading, setPitchLoading] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -70,22 +113,37 @@ export function ResultView({ id, owner, user }: { id: string; owner: boolean; us
     }
   }, [id]);
 
+  const isTerminal = initial?.status === "analyzed" || initial?.status === "failed";
+
+  // For in-flight analyses, fetch immediately on mount (don't wait the first
+  // 1500ms tick) so the score/data appears as soon as it's ready.
   useEffect(() => {
+    if (isTerminal) return;
     let cancelled = false;
     let attempts = 0;
-    const poll = setInterval(async () => {
+    let poll: ReturnType<typeof setInterval> | undefined;
+    const stop = () => {
+      cancelled = true;
+      if (poll) clearInterval(poll);
+    };
+
+    void (async () => {
       const data = await fetchStatus();
       if (cancelled) return;
       attempts++;
-      if (!data || data.status === "analyzed" || data.status === "failed" || attempts > 40) {
-        clearInterval(poll);
-      }
-    }, 1500);
-    return () => {
-      cancelled = true;
-      clearInterval(poll);
-    };
-  }, [fetchStatus]);
+      // Completed already at load — stop. Otherwise begin polling.
+      if (!data || data.status === "analyzed" || data.status === "failed" || attempts > 40) return stop();
+      poll = setInterval(async () => {
+        if (cancelled) return;
+        const next = await fetchStatus();
+        if (cancelled) return;
+        attempts++;
+        if (!next || next.status === "analyzed" || next.status === "failed" || attempts > 40) stop();
+      }, 1500);
+    })();
+
+    return stop;
+  }, [fetchStatus, isTerminal]);
 
   useEffect(() => {
     if (analysis?.status === "analyzed" && !trackedCompleteRef.current) {

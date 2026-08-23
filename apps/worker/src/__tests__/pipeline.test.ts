@@ -26,6 +26,9 @@ vi.mock("../scrape", () => ({ scrapeArticle: scrapeMock }));
 const analyzeMock = vi.fn();
 vi.mock("../analyze", () => ({ analyzeArticle: analyzeMock }));
 
+const generatePitchMock = vi.fn();
+vi.mock("../generate-pitch", () => ({ generatePitch: generatePitchMock }));
+
 const fetchDigestEmailsMock = vi.fn().mockResolvedValue([]);
 const extractJournalistRequestsMock = vi.fn().mockResolvedValue([]);
 const matchRequestsToAnalysisMock = vi.fn().mockResolvedValue([]);

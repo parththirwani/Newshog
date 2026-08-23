@@ -6,6 +6,7 @@ import { analyzeArticle } from "./analyze";
 import { fetchDigestEmails, markEmailsSeen } from "./email-fetch";
 import { extractJournalistRequests } from "./extract-requests";
 import { matchRequestsToAnalysis } from "./match-requests";
+import { generatePitch } from "./generate-pitch";
 import type { ExpertiseSummary, CompanyContext, JournalistRequest } from "@newshog/shared";
 
 function stringList(value: unknown): string {
@@ -96,6 +97,20 @@ const analyzeWorker = new Worker(
 
       const result = await analyzeArticle(scraped.text, scraped.title, profileContext, analysisId);
 
+      let pitch: string | undefined;
+      try {
+        const angles = result.angles as import("@newshog/shared").Angle[];
+        pitch = await generatePitch({
+          articleTitle: scraped.title,
+          articleText: scraped.text,
+          angles,
+          profileContext,
+          analysisId,
+        });
+      } catch (err) {
+        console.error(`[worker] pitch generation failed for ${analysisId}:`, err);
+      }
+
       await prisma.analysis.update({
         where: { id: analysisId },
         data: {
@@ -103,6 +118,7 @@ const analyzeWorker = new Worker(
           score: result.score,
           whyNow: result.why_now,
           angles: result.angles,
+          ...(pitch ? { pitch } : {}),
         },
       });
 

@@ -21,6 +21,27 @@ async function getAnalysis(id: string) {
   return analysis;
 }
 
+async function getFullAnalysis(id: string) {
+  const analysis = await prisma.analysis.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      status: true,
+      articleTitle: true,
+      score: true,
+      angles: true,
+      whyNow: true,
+      pitch: true,
+      error: true,
+      profileId: true,
+      userId: true,
+      updatedAt: true,
+    },
+  });
+  if (!analysis) notFound();
+  return analysis;
+}
+
 export async function generateMetadata({
   params,
 }: {
@@ -50,10 +71,16 @@ export default async function AnalysisPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const analysis = await getAnalysis(id);
   const user = await getSessionUser();
   const { userId, profileId } = await resolveOwnerIds();
-  const owner = isOwner(analysis, userId, profileId);
+
+  const basic = await getAnalysis(id);
+  const owner = isOwner(basic, userId, profileId);
+
+  if (basic.status === "analyzed") {
+    const full = await getFullAnalysis(id);
+    return <ResultView id={id} owner={owner} user={user} initial={full} />;
+  }
 
   return <ResultView id={id} owner={owner} user={user} />;
 }
