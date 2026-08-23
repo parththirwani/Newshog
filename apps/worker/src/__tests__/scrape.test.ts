@@ -122,11 +122,13 @@ describe("scrapeArticle", () => {
 
     await scrapeArticle("https://example.com");
 
+    // scrapeArticle now sends a browser-like UA (bot-challenge evasion), not
+    // a self-identifying bot string — assert a real browser agent is sent.
     expect(fetchSpy).toHaveBeenCalledWith(
       "https://example.com",
       expect.objectContaining({
         headers: expect.objectContaining({
-          "User-Agent": expect.stringContaining("NewshogBot"),
+          "User-Agent": expect.stringMatching(/Mozilla\/5\.0/),
         }),
       }),
     );

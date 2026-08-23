@@ -116,12 +116,13 @@ const analyzeWorker = new Worker(
         });
         researchContext = research.digest;
         researchRunId = research.runId;
-      }
 
-      await prisma.analysis.update({
-        where: { id: analysisId },
-        data: { status: "analyzing" },
-      });
+        // Research set "researching" — reset to "analyzing" before the LLM.
+        await prisma.analysis.update({
+          where: { id: analysisId },
+          data: { status: "analyzing" },
+        });
+      }
 
       const result = await analyzeArticle(scraped.text, scraped.title, profileContext, analysisId, researchContext);
 

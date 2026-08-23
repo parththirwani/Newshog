@@ -175,7 +175,7 @@ describe("pipeline processor (analyze worker)", () => {
     scrapeMock.mockResolvedValue({ title: "Scraped Title", text: "Full article body", mode: "full" });
     analyzeMock.mockResolvedValue({ score: 50, why_now: "ok", angles: [] });
     await capturedProcessors["analyze-test"]({ data: { analysisId: "abc-123" } });
-    expect(analyzeMock).toHaveBeenCalledWith("Full article body", "Scraped Title", undefined, "abc-123");
+    expect(analyzeMock).toHaveBeenCalledWith("Full article body", "Scraped Title", undefined, "abc-123", undefined);
   });
 
   it("fetches profile context when analysis has profileId", async () => {
@@ -189,7 +189,7 @@ describe("pipeline processor (analyze worker)", () => {
 
     await capturedProcessors["analyze-test"]({ data: { analysisId: "abc-123" } });
 
-    expect(analyzeMock).toHaveBeenCalledWith("body", "T", expect.stringContaining("Topics: AI, startups"), "abc-123");
+    expect(analyzeMock).toHaveBeenCalledWith("body", "T", expect.stringContaining("Topics: AI, startups"), "abc-123", undefined);
   });
 
   it("does not pass profile context when analysis has no profileId", async () => {
@@ -198,7 +198,7 @@ describe("pipeline processor (analyze worker)", () => {
 
     await capturedProcessors["analyze-test"]({ data: { analysisId: "abc-123" } });
 
-    expect(analyzeMock).toHaveBeenCalledWith("body", "T", undefined, "abc-123");
+    expect(analyzeMock).toHaveBeenCalledWith("body", "T", undefined, "abc-123", undefined);
   });
 });
 
