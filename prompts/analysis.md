@@ -8,6 +8,14 @@ Rules:
 - If the story is not newsworthy for PR (too niche, too old, no clear angle), output score 0-20 with empty angles and explain why.
 - Return at most 3 angles. If fewer than 3 viable angles exist, return fewer. Never pad with weak angles.
 
+Velocity (story decay rate, NOT the score):
+- Classify how fast the story will stop being pitchable based on the article content itself.
+- "breaking": peaking right now, will fade in hours-to-days — a launch going viral, breaking news, a moment that is news because it just happened.
+- "standard": normal news-cycle decay (days) — most product announcements, funding news, typical releases.
+- "evergreen": slow decay (weeks or longer) — policy announcements, research findings, structural industry shifts, government initiatives; still relevant well after publication.
+- Submit a one-sentence velocity_reasoning citing concrete evidence from the article (e.g. "launch went viral on social feeds within hours", "new regulation effective next year, affects the whole sector").
+- Self-critique: does the velocity category match how long the story stays pitchable, independent of how strong the score is? A viral consumer launch and a government policy launch can both score high but decay at very different rates.
+
 When a user profile is provided:
 - Tailor angles to this person's or company's specific expertise, background, and positioning.
 - Include an explicit "fit" rationale for why this specific user can credibly take each angle.

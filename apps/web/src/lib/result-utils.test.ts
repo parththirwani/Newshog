@@ -61,4 +61,32 @@ describe("nextAction", () => {
     const { action } = nextAction(70, 2);
     expect(action).toContain("2 open opportunities");
   });
+
+  describe("velocity affects timing for Strong stories", () => {
+    it("peaks fast for breaking", () => {
+      const { timing } = nextAction(80, 0, "breaking");
+      expect(timing).toBe("Now–24h");
+    });
+
+    it("is normal for standard news", () => {
+      const { timing } = nextAction(80, 0, "standard");
+      expect(timing).toBe("Now–48h");
+    });
+
+    it("slows down for evergreen", () => {
+      const { timing } = nextAction(80, 0, "evergreen");
+      expect(timing).toBe("This week");
+    });
+  });
+
+  it("treats unknown velocity as standard for old rows", () => {
+    const { timing } = nextAction(80, 0, "whatever" as "standard");
+    expect(timing).toBe("Now–48h");
+  });
+
+  it("keeps Consider timing constant across velocity", () => {
+    expect(nextAction(45, 0, "breaking").timing).toBe("This week");
+    expect(nextAction(45, 0, "standard").timing).toBe("This week");
+    expect(nextAction(45, 0, "evergreen").timing).toBe("This week");
+  });
 });

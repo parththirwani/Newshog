@@ -8,6 +8,11 @@ export const SCORE_THRESHOLD_HIGH = 60;
 
 export const MAX_ANGLES = 3;
 
+// Decay-rate categories for story velocity. Order is fixed — standard is the
+// safe fallback for old rows / corrupt LLM output.
+export const STORY_VELOCITIES = ["breaking", "standard", "evergreen"] as const;
+export const DEFAULT_VELOCITY = "standard";
+
 // Cost per 1M tokens (USD), for the /stats dashboard. Hardcoded, not a
 // live price lookup — bump the number when the model or plan changes.
 export const LLM_PROMPT_PRICE_PER_M = 0.25;

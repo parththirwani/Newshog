@@ -1,9 +1,17 @@
 "use client";
 
 import { Reveal, WordReveal } from "./Reveal";
-import { UrlInput } from "./UrlInput";
+import { UrlInput, type AnalyzeMode } from "./UrlInput";
 
-export function FinalCta({ onAnalyze }: { onAnalyze?: (url: string) => void }) {
+export function FinalCta({
+  onAnalyze,
+  pro = false,
+  onUpgrade,
+}: {
+  onAnalyze?: (url: string, mode: AnalyzeMode) => void;
+  pro?: boolean;
+  onUpgrade?: () => void;
+}) {
   return (
     <section id="cta" className="relative isolate overflow-hidden">
       <div
@@ -23,7 +31,7 @@ export function FinalCta({ onAnalyze }: { onAnalyze?: (url: string) => void }) {
             Paste a link. Get the verdict before the news cycle moves on.
           </p>
           <Reveal delay={80}>
-            <UrlInput className="mt-9 max-w-xl" onAnalyze={onAnalyze} />
+            <UrlInput className="mt-9 max-w-xl" onAnalyze={onAnalyze} pro={pro} onUpgrade={onUpgrade} />
           </Reveal>
         </div>
       </div>

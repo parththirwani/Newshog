@@ -1,5 +1,5 @@
 export type { Angle } from "./angle";
-export type { LlmAnalysis, AnalysisStatus, Analysis } from "./analysis";
+export type { LlmAnalysis, AnalysisStatus, Analysis, StoryVelocity } from "./analysis";
 export type {
   ProfileType,
   ExpertiseSummary,

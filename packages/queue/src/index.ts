@@ -4,6 +4,7 @@ import IORedis from "ioredis";
 export const ANALYZE_QUEUE = "analyze";
 export const EMAIL_INGEST_QUEUE = "email-ingest";
 export const MATCH_QUEUE = "match";
+export const DEEP_RESEARCH_QUEUE = "deep-research";
 
 export function createConnection() {
   return new IORedis(process.env.REDIS_URL ?? "redis://localhost:6379", {
@@ -14,6 +15,7 @@ export function createConnection() {
 let analyzeQueue: Queue | undefined;
 let emailIngestQueue: Queue | undefined;
 let matchQueue: Queue | undefined;
+let deepResearchQueue: Queue | undefined;
 
 export function getAnalyzeQueue(): Queue {
   if (!analyzeQueue) {
@@ -34,4 +36,11 @@ export function getMatchQueue(): Queue {
     matchQueue = new Queue(MATCH_QUEUE, { connection: createConnection() });
   }
   return matchQueue;
+}
+
+export function getDeepResearchQueue(): Queue {
+  if (!deepResearchQueue) {
+    deepResearchQueue = new Queue(DEEP_RESEARCH_QUEUE, { connection: createConnection() });
+  }
+  return deepResearchQueue;
 }

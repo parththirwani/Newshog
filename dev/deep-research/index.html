@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Deep Research Console</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 24px; max-width: 960px; }
+  textarea { width: 100%; box-sizing: border-box; min-height: 80px; }
+  button { padding: 6px 14px; margin-right: 6px; }
+  #log { background: #0d1117; color: #c9d1d9; white-space: pre-wrap; height: 300px; overflow: auto; padding: 8px; font: 12px monospace; }
+  .err { color: #f85149; }
+</style>
+</head>
+<body>
+<h1>Deep Research Console</h1>
+<p>Base URL: <input id="base" value="http://localhost:3000" /></p>
+
+<button onclick="health()">Health</button>
+<button onclick="prepare()">Prepare (clarify)</button>
+<div id="health"></div>
+<div id="questions"></div>
+
+<h2>Kickoff</h2>
+<p><label>Query: <input id="query" size="60"></label></p>
+<p><label>depth <input id="depth" value="2" type="number" min="1" max="4"></label>
+<label>breadth <input id="breadth" type="number" value="3" min="1" max="6"></label>
+<label>mode <select id="mode"><option value="answer">answer</option><option value="report">report</option></select></label></p>
+<p><textarea id="answers" rows="2" placeholder='Optional: [{"id":"x","question":"...","answer":"..."}]'></textarea></p>
+<button onclick="kickoff(false)">Start (with clarification)</button>
+<button onclick="kickoff(true)">Skip clarification</button>
+<button onclick="cancel()">Cancel</button>
+<div id="runId"></div>
+
+<h2>Live stream</h2>
+<pre id="log"></pre>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const base = () => $("base").value.trim().replace(/\/$/, "");
+  let sessionId = null, runId = null, es = null;
+
+  async function api(path, method = "GET", body = null) {
+    const opts = { method, headers: {} };
+    if (body) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
+    const res = await fetch(`${base()}${path}`, opts);
+    const text = await res.text();
+    let json; try { json = JSON.parse(text); } catch { json = { raw: text }; }
+    if (!res.ok) throw new Error((json.error || text) + " (HTTP " + res.status + ")");
+    return json;
+  }
+
+  function log(line) {
+    const el = $("log");
+    el.textContent += `${new Date().toISOString()}  ${line}\n`;
+    el.scrollTop = el.scrollHeight;
+  }
+
+  async function health() {
+    try { $("health").textContent = JSON.stringify(await api("/api/deep-research/health")); }
+    catch (e) { $("health").textContent = "unavailable: " + e.message; }
+  }
+
+  async function prepare() {
+    const q = prompt("Research query:");
+    if (!q) return;
+    try {
+      const p = await api("/api/deep-research/prepare", "POST", { query: q });
+      sessionId = p.prepareSessionId;
+      $("questions").innerHTML = `<b>${p.questions.length} questions</b><br>` +
+        p.questions.map((x) => `${x.id}: ${x.question}`).join("<br>") +
+        `<br>prepareSessionId: <code>${p.prepareSessionId}</code>`;
+    } catch (e) { log("ERR " + e.message); }
+  }
+
+  async function kickoff(skip) {
+    if (!skip && !sessionId) { log("WARN run /prepare first (or skip)"); return; }
+    let answers = [];
+    try { answers = JSON.parse($("answers").value || "[]"); } catch { log("ERR bad answers JSON"); return; }
+    const body = { query: $("query").value, depth: +$("depth").value, breadth: +$("breadth").value, mode: $("mode").value };
+    if (skip) body.skipClarification = true;
+    else { body.prepareSessionId = sessionId; body.clarificationAnswers = answers; }
+    try {
+      const r = await api("/api/deep-research", "POST", body);
+      runId = r.runId;
+      $("runId").textContent = "runId: " + runId;
+      startStream(runId);
+    } catch (e) { log("ERR " + e.message); }
+  }
+
+  function startStream(id) {
+    if (es) es.close();
+    const baseUrl = base();
+    es = new EventSource(`${baseUrl}/api/deep-research/${id}/events`);
+    es.onmessage = (ev) => {
+      let d; try { d = JSON.parse(ev.data); } catch { d = ev.data; }
+      log(typeof d === "object" ? JSON.stringify(d) : d);
+    };
+    es.onerror = () => { es.close(); es = null; };
+  }
+
+  async function cancel() {
+    if (!runId) return;
+    await api(`/api/deep-research/${runId}`, "POST", {});
+    log("cancel requested");
+  }
+</script>
+</body>
+</html>

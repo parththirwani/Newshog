@@ -65,8 +65,10 @@ vi.mock("@newshog/queue", () => ({
   ANALYZE_QUEUE: "analyze-test",
   EMAIL_INGEST_QUEUE: "email-ingest-test",
   MATCH_QUEUE: "match-test",
+  DEEP_RESEARCH_QUEUE: "deep-research-test",
   createConnection: vi.fn(),
   getMatchQueue: vi.fn(() => ({ add: matchQueueAddMock })),
+  getDeepResearchQueue: vi.fn(() => ({ add: vi.fn() })),
 }));
 
 await import("../index");
@@ -99,6 +101,8 @@ describe("pipeline processor (analyze worker)", () => {
     analyzeMock.mockResolvedValue({
       score: 80,
       why_now: "Timely event",
+      velocity: "standard",
+      velocity_reasoning: "Routine product announcement",
       angles: [{ title: "Angle 1", why_now: "Now", why_journalists_care: "New info", headline: "Headline" }],
     });
 
@@ -108,7 +112,14 @@ describe("pipeline processor (analyze worker)", () => {
     expect(updates[0]).toEqual({ status: "scraping" });
     expect(updates[1]).toEqual({ status: "scraped", articleTitle: "Article Title", rawArticleText: "Scraped text content here.", extractionMode: "full" });
     expect(updates[2]).toEqual({ status: "analyzing" });
-    expect(updates[3]).toEqual({ status: "analyzed", score: 80, whyNow: "Timely event", angles: [{ title: "Angle 1", why_now: "Now", why_journalists_care: "New info", headline: "Headline" }] });
+    expect(updates[3]).toEqual({
+      status: "analyzed",
+      score: 80,
+      velocity: "standard",
+      velocityReasoning: "Routine product announcement",
+      whyNow: "Timely event",
+      angles: [{ title: "Angle 1", why_now: "Now", why_journalists_care: "New info", headline: "Headline" }],
+    });
   });
 
   it("enqueues a match job after analysis completes", async () => {

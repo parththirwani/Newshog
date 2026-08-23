@@ -42,13 +42,13 @@ export async function getSessionEmail(): Promise<string | null> {
 
 // Resolve the session cookie to a real user row. Lazy import keeps prisma
 // out of auth.ts's load path for routes that never touch the DB.
-export async function getSessionUser(): Promise<{ id: string; email: string } | null> {
+export async function getSessionUser(): Promise<{ id: string; email: string; tier: string } | null> {
   const email = await getSessionEmail();
   if (!email) return null;
   const { prisma } = await import("@newshog/db");
   const user = await prisma.user.findUnique({
     where: { email },
-    select: { id: true, email: true },
+    select: { id: true, email: true, tier: true },
   });
   return user;
 }

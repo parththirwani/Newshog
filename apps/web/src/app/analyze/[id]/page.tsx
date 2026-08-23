@@ -29,12 +29,14 @@ async function getFullAnalysis(id: string) {
       status: true,
       articleTitle: true,
       score: true,
+      velocity: true,
       angles: true,
       whyNow: true,
       pitch: true,
       error: true,
       profileId: true,
       userId: true,
+      researchRunId: true,
       updatedAt: true,
     },
   });
@@ -65,6 +67,18 @@ export async function generateMetadata({
   };
 }
 
+function researchRunRow(run: { status: string; learnings: unknown; sources: unknown; answer: string | null; report: string | null } | null) {
+  if (!run) return null;
+  return {
+    status: run.status,
+    lowConfidence: run.status === "low_confidence" || run.status === "truncated",
+    learnings: run.learnings,
+    sources: run.sources,
+    answer: run.answer,
+    report: run.report,
+  };
+}
+
 export default async function AnalysisPage({
   params,
 }: {
@@ -79,7 +93,13 @@ export default async function AnalysisPage({
 
   if (basic.status === "analyzed") {
     const full = await getFullAnalysis(id);
-    return <ResultView id={id} owner={owner} user={user} initial={full} />;
+    // Personalized analyses show their research to the owner only; context-free
+    // (no userId + no profile) analyses are public and show it to everyone.
+    const contextFree = !full.userId && !full.profileId;
+    const run = full.researchRunId && (owner || contextFree)
+      ? await prisma.deepResearchRun.findUnique({ where: { runId: full.researchRunId } })
+      : null;
+    return <ResultView id={id} owner={owner} user={user} initial={full} initialResearch={researchRunRow(run as never)} />;
   }
 
   return <ResultView id={id} owner={owner} user={user} />;

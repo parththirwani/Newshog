@@ -1,12 +1,14 @@
 import { Worker } from "bullmq";
 import { prisma, recordLlmCall, logStage } from "@newshog/db";
-import { ANALYZE_QUEUE, EMAIL_INGEST_QUEUE, MATCH_QUEUE, createConnection, getMatchQueue } from "@newshog/queue";
+import { ANALYZE_QUEUE, EMAIL_INGEST_QUEUE, MATCH_QUEUE, createConnection, getMatchQueue, DEEP_RESEARCH_QUEUE } from "@newshog/queue";
 import { scrapeArticle } from "./scrape";
 import { analyzeArticle } from "./analyze";
 import { fetchDigestEmails, markEmailsSeen } from "./email-fetch";
 import { extractJournalistRequests } from "./extract-requests";
 import { matchRequestsToAnalysis } from "./match-requests";
 import { generatePitch } from "./generate-pitch";
+import { deepResearchWorker } from "./deep-research";
+import { deepAnalyzeArticle } from "./deep-analyze";
 import type { ExpertiseSummary, CompanyContext, JournalistRequest } from "@newshog/shared";
 
 function stringList(value: unknown): string {
@@ -54,9 +56,9 @@ const LLM_CALLS_PER_MIN = 60;
 const analyzeWorker = new Worker(
   ANALYZE_QUEUE,
   async (job) => {
-    const { analysisId } = job.data as { analysisId: string };
-    console.log(`[worker] processing analysis ${analysisId}`);
-    logStage("job_start", { analysisId });
+    const { analysisId, deepResearch } = job.data as { analysisId: string; deepResearch?: boolean };
+    console.log(`[worker] processing analysis ${analysisId}${deepResearch ? " (deep research)" : ""}`);
+    logStage("job_start", { analysisId, deepResearch: deepResearch ?? false });
 
     const analysis = await prisma.analysis.findUnique({ where: { id: analysisId } });
     if (!analysis) throw new Error(`Analysis ${analysisId} not found`);
@@ -95,7 +97,33 @@ const analyzeWorker = new Worker(
         if (profile) profileContext = buildProfileContext(profile) || undefined;
       }
 
-      const result = await analyzeArticle(scraped.text, scraped.title, profileContext, analysisId);
+      // Deep Research is a pre-analysis context step: research the article's
+      // topic, then feed the digest into the SAME analysis call. Result is the
+      // same Analysis shape — just a researchRunId link + richer grounding.
+      let researchContext: string | undefined;
+      let researchRunId: string | null = null;
+      if (deepResearch) {
+        await prisma.analysis.update({
+          where: { id: analysisId },
+          data: { status: "researching" },
+        });
+
+        const research = await deepAnalyzeArticle({
+          title: scraped.title,
+          articleText: scraped.text,
+          analysisId,
+          analysisUserId: analysis.userId ?? null,
+        });
+        researchContext = research.digest;
+        researchRunId = research.runId;
+      }
+
+      await prisma.analysis.update({
+        where: { id: analysisId },
+        data: { status: "analyzing" },
+      });
+
+      const result = await analyzeArticle(scraped.text, scraped.title, profileContext, analysisId, researchContext);
 
       let pitch: string | undefined;
       try {
@@ -116,8 +144,11 @@ const analyzeWorker = new Worker(
         data: {
           status: "analyzed",
           score: result.score,
+          velocity: result.velocity,
+          velocityReasoning: result.velocity_reasoning,
           whyNow: result.why_now,
           angles: result.angles,
+          ...(researchRunId ? { researchRunId } : {}),
           ...(pitch ? { pitch } : {}),
         },
       });
@@ -295,4 +326,6 @@ async function scheduleEmailIngest() {
 
 scheduleEmailIngest().catch(console.error);
 
-console.log("[worker] ready — listening on queues:", ANALYZE_QUEUE, EMAIL_INGEST_QUEUE, MATCH_QUEUE);
+const deepResearchWorkerInstance = deepResearchWorker();
+
+console.log("[worker] ready — listening on queues:", ANALYZE_QUEUE, EMAIL_INGEST_QUEUE, MATCH_QUEUE, DEEP_RESEARCH_QUEUE);

@@ -11,6 +11,7 @@ enum AnalysisStatus {
   queued
   scraping
   scraped
+  researching
   analyzing
   analyzed
   failed
@@ -32,11 +33,22 @@ enum SourcePlatform {
   sourcebottle
 }
 
+enum DeepResearchStatus {
+  queued
+  running
+  completed
+  cancelled
+  failed
+  truncated
+  low_confidence
+}
+
 model User {
   id          String    @id @default(cuid())
   email       String    @unique
   createdAt   DateTime  @default(now()) @map("created_at")
   lastLoginAt DateTime? @map("last_login_at")
+  tier        String    @default("free")
 
   profiles Profile[]
   analyses Analysis[]
@@ -99,26 +111,33 @@ model Token {
 }
 
 model Analysis {
-  id             String         @id @default(cuid())
-  url            String
-  status         AnalysisStatus @default(queued)
-  articleTitle   String?        @map("article_title")
-  rawArticleText String?        @map("raw_article_text")
-  extractionMode ExtractionMode? @map("extraction_mode")
-  score          Int?
-  angles         Json?
-  whyNow         String?        @map("why_now")
-  pitch          String?
-  error          String?
-  profileId      String?        @map("profile_id")
-  userId         String?        @map("user_id")
-  anonId         String?        @map("anon_id")
-  createdAt      DateTime       @default(now()) @map("created_at")
-  updatedAt      DateTime       @updatedAt @map("updated_at")
+  id                String          @id @default(cuid())
+  url               String
+  status            AnalysisStatus  @default(queued)
+  articleTitle      String?         @map("article_title")
+  rawArticleText    String?         @map("raw_article_text")
+  extractionMode    ExtractionMode? @map("extraction_mode")
+  score             Int?
+  // ponytail: free-string velocity column, not a check constraint or enum —
+  // lets new categories ship without a migration. Ceiling: garbage can sneak
+  // in; app falls back to "standard". Promote to enum when categories freeze.
+  velocity          String?
+  velocityReasoning String?         @map("velocity_reasoning")
+  angles            Json?
+  whyNow            String?         @map("why_now")
+  pitch             String?
+  error             String?
+  profileId         String?         @map("profile_id")
+  userId            String?         @map("user_id")
+  anonId            String?         @map("anon_id")
+  researchRunId     String?         @map("research_run_id")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
 
-  profile Profile?            @relation(fields: [profileId], references: [id])
-  user    User?               @relation(fields: [userId], references: [id])
-  matches AnalysisJournalistMatch[]
+  profile  Profile?                 @relation(fields: [profileId], references: [id])
+  user     User?                    @relation(fields: [userId], references: [id])
+  run      DeepResearchRun?         @relation(fields: [researchRunId], references: [runId])
+  matches  AnalysisJournalistMatch[]
   llmCalls LLMCall[]
 
   @@index([url, profileId, status])
@@ -142,16 +161,16 @@ model LLMCall {
 }
 
 model JournalistRequest {
-  id              String         @id @default(cuid())
-  sourcePlatform  SourcePlatform @map("source_platform")
-  requesterName   String?        @map("requester_name")
-  outlet          String?
-  topicText       String         @map("topic_text")
-  deadline        DateTime?
-  replyContact    String?        @map("reply_contact")
-  rawEmailRef     String?        @map("raw_email_ref")
-  ingestedAt      DateTime       @default(now()) @map("ingested_at")
-  expiresAt       DateTime?      @map("expires_at")
+  id             String         @id @default(cuid())
+  sourcePlatform SourcePlatform @map("source_platform")
+  requesterName  String?        @map("requester_name")
+  outlet         String?
+  topicText      String         @map("topic_text")
+  deadline       DateTime?
+  replyContact   String?        @map("reply_contact")
+  rawEmailRef    String?        @map("raw_email_ref")
+  ingestedAt     DateTime       @default(now()) @map("ingested_at")
+  expiresAt      DateTime?      @map("expires_at")
 
   matches AnalysisJournalistMatch[]
 
@@ -159,9 +178,9 @@ model JournalistRequest {
 }
 
 model AnalysisJournalistMatch {
-  analysisId          String @map("analysis_id")
-  journalistRequestId String @map("journalist_request_id")
-  matchRationale      String @map("match_rationale")
+  analysisId          String   @map("analysis_id")
+  journalistRequestId String   @map("journalist_request_id")
+  matchRationale      String   @map("match_rationale")
   matchedAt           DateTime @default(now()) @map("matched_at")
 
   analysis          Analysis          @relation(fields: [analysisId], references: [id], onDelete: Cascade)
@@ -179,4 +198,49 @@ model Event {
 
   @@index([name])
   @@map("events")
+}
+
+// ── Deep Research ─────────────────────────────────────────────
+
+model DeepResearchRun {
+  id              String             @id @default(cuid())
+  runId           String             @unique
+  status          DeepResearchStatus @default(queued)
+  userId          String?            @map("user_id")
+  query           String
+  depth           Int                @default(2)
+  breadth         Int                @default(3)
+  mode            String             @default("answer")
+  prepareSessionId String?           @map("prepare_session_id")
+  skipClarification Boolean          @default(false) @map("skip_clarification")
+  clarificationAnswers Json?         @map("clarification_answers")
+  coveredQueries   Json              @default("[]") @map("covered_queries")
+  learnings        Json              @default("[]")
+  sources          Json              @default("[]")
+  visitedUrls      Json              @default("[]") @map("visited_urls")
+  answer           String?
+  report           String?
+  promptTokens     Int               @default(0) @map("prompt_tokens")
+  completionTokens Int               @default(0) @map("completion_tokens")
+  estimatedCostUsd Float?            @map("estimated_cost_usd")
+  error            String?
+  cancelled        Boolean           @default(false)
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+
+  analyses Analysis[]
+
+  @@index([status, updatedAt])
+  @@map("deep_research_runs")
+}
+
+model DeepResearchSession {
+  id        String   @id @default(cuid())
+  query     String
+  questions Json
+  answers   Json?
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("deep_research_sessions")
 }

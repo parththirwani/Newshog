@@ -46,6 +46,8 @@ describe("analyzeArticle", () => {
       makeLlmResponse({
         score: 75,
         why_now: "Relevant because of X",
+        velocity: "breaking",
+        velocity_reasoning: "Launch went viral in hours",
         angles: [
           {
             title: "Angle 1",
@@ -61,6 +63,8 @@ describe("analyzeArticle", () => {
 
     expect(result.score).toBe(75);
     expect(result.why_now).toBe("Relevant because of X");
+    expect(result.velocity).toBe("breaking");
+    expect(result.velocity_reasoning).toBe("Launch went viral in hours");
     expect(result.angles).toHaveLength(1);
     expect(result.angles[0].title).toBe("Angle 1");
   });
@@ -175,5 +179,43 @@ describe("analyzeArticle", () => {
 
     const result = await analyzeArticle("text", null);
     expect(result.score).toBe(73);
+  });
+
+  it("passes through a valid velocity", async () => {
+    mockCreate.mockResolvedValue(
+      makeLlmResponse({
+        score: 65,
+        why_now: "ok",
+        velocity: "evergreen",
+        velocity_reasoning: "Policy takes effect next year",
+        angles: [],
+      }),
+    );
+
+    const result = await analyzeArticle("text", null);
+    expect(result.velocity).toBe("evergreen");
+  });
+
+  it("defaults missing velocity to standard", async () => {
+    mockCreate.mockResolvedValue(
+      makeLlmResponse({ score: 65, why_now: "ok", angles: [] }),
+    );
+
+    const result = await analyzeArticle("text", null);
+    expect(result.velocity).toBe("standard");
+  });
+
+  it("defaults unknown velocity to standard", async () => {
+    mockCreate.mockResolvedValue(
+      makeLlmResponse({
+        score: 65,
+        why_now: "ok",
+        velocity: "unstoppable",
+        angles: [],
+      }),
+    );
+
+    const result = await analyzeArticle("text", null);
+    expect(result.velocity).toBe("standard");
   });
 });

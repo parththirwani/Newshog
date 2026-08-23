@@ -12,22 +12,32 @@ const PAGE_SIZE = 20;
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; type?: string }>;
 }) {
   const user = await getSessionUser();
   if (!user) redirect("/login");
 
-  const { page: pageParam } = await searchParams;
+  const { page: pageParam, type } = await searchParams;
+  const typeFilter = type === "quick" || type === "deep" ? type : "all";
   const page = Math.max(1, Number(pageParam) || 1);
   const skip = (page - 1) * PAGE_SIZE;
 
   const now = new Date();
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
+  // quick = no research run; deep = research-backed; all (default) = everything.
+  const typeWhere =
+    typeFilter === "quick"
+      ? { researchRunId: null }
+      : typeFilter === "deep"
+        ? { researchRunId: { not: null } }
+        : {};
+  const where = { userId: user.id, ...typeWhere };
+
   const [analyses, total, avgResult, strongCount, weekCount, profile] =
     await Promise.all([
       prisma.analysis.findMany({
-        where: { userId: user.id },
+        where,
         orderBy: { createdAt: "desc" },
         skip,
         take: PAGE_SIZE,
@@ -38,18 +48,19 @@ export default async function DashboardPage({
           score: true,
           status: true,
           createdAt: true,
+          researchRunId: true,
         },
       }),
-      prisma.analysis.count({ where: { userId: user.id } }),
+      prisma.analysis.count({ where }),
       prisma.analysis.aggregate({
-        where: { userId: user.id, score: { not: null } },
+        where: { ...where, score: { not: null } },
         _avg: { score: true },
       }),
       prisma.analysis.count({
-        where: { userId: user.id, score: { gte: SCORE_THRESHOLD_HIGH } },
+        where: { ...where, score: { gte: SCORE_THRESHOLD_HIGH } },
       }),
       prisma.analysis.count({
-        where: { userId: user.id, createdAt: { gte: weekAgo } },
+        where: { ...where, createdAt: { gte: weekAgo } },
       }),
       prisma.profile.findUnique({
         where: { userId: user.id },
@@ -107,43 +118,61 @@ export default async function DashboardPage({
       {analyses.length === 0 ? (
         <div className="rounded-xl border border-border bg-card p-8 text-center shadow-sm">
           <p className="text-sm text-muted-foreground">
-            Paste a story URL above to get your first score.
+            {typeFilter === "all"
+              ? "Paste a story URL above to get your first score."
+              : typeFilter === "quick"
+                ? "No quick score reports yet."
+                : "No deep research reports yet."}
           </p>
         </div>
       ) : (
-        <ul className="divide-y divide-border rounded-xl border border-border bg-card shadow-sm">
-          {analyses.map((a) => (
-            <li key={a.id}>
-              <Link
-                href={`/analyze/${a.id}`}
-                className="flex items-center gap-4 px-5 py-4 transition-shadow hover:shadow-md"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">
-                    {a.articleTitle || a.url}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {new Date(a.createdAt).toLocaleString()}
-                  </p>
-                </div>
-                {a.score != null ? (
-                  <ScoreRing score={a.score} size={40} />
-                ) : (
-                  <span className="shrink-0 label-mono text-xs capitalize text-muted-foreground">
-                    {a.status}
-                  </span>
-                )}
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <>
+          <div className="mb-4 flex items-center gap-2">
+            <FilterTab href="/dashboard" active={typeFilter === "all"} label="All" />
+            <FilterTab href="/dashboard?type=quick" active={typeFilter === "quick"} label="Quick score" />
+            <FilterTab href="/dashboard?type=deep" active={typeFilter === "deep"} label="Deep research" />
+          </div>
+          <ul className="divide-y divide-border rounded-xl border border-border bg-card shadow-sm">
+            {analyses.map((a) => (
+              <li key={a.id}>
+                <Link
+                  href={`/analyze/${a.id}`}
+                  className="flex items-center gap-4 px-5 py-4 transition-shadow hover:shadow-md"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-medium">
+                        {a.articleTitle || a.url}
+                      </p>
+                      {a.researchRunId && (
+                        <span className="shrink-0 rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium tracking-wide text-accent-strong uppercase">
+                          Deep
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(a.createdAt).toLocaleString()}
+                    </p>
+                  </div>
+                  {a.score != null ? (
+                    <ScoreRing score={a.score} size={40} />
+                  ) : (
+                    <span className="shrink-0 label-mono text-xs capitalize text-muted-foreground">
+                      {a.status}
+                    </span>
+                  )}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
       {pages > 1 && (
         <div className="mt-8 flex items-center justify-between">
           {page > 1 ? (
             <Link
-              href={`/dashboard?page=${page - 1}`}
+              href={`/dashboard?page=${page - 1}${typeFilter !== "all" ? `&type=${typeFilter}` : ""}`}
               className="text-sm text-accent-strong hover:underline"
             >
               ← Previous
@@ -153,7 +182,7 @@ export default async function DashboardPage({
           )}
           {page < pages ? (
             <Link
-              href={`/dashboard?page=${page + 1}`}
+              href={`/dashboard?page=${page + 1}${typeFilter !== "all" ? `&type=${typeFilter}` : ""}`}
               className="text-sm text-accent-strong hover:underline"
             >
               Next →
@@ -164,6 +193,21 @@ export default async function DashboardPage({
         </div>
       )}
     </AppShell>
+  );
+}
+
+function FilterTab({ href, active, label }: { href: string; active: boolean; label: string }) {
+  return (
+    <Link
+      href={href}
+      className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+        active
+          ? "bg-accent-strong text-primary-foreground"
+          : "border border-border text-muted-foreground hover:bg-secondary"
+      }`}
+    >
+      {label}
+    </Link>
   );
 }
 

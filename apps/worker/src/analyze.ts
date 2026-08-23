@@ -1,5 +1,13 @@
 import OpenAI from "openai";
-import { OPENROUTER_BASE_URL, LLM_MODEL, LLM_MAX_TOKENS, LLM_MAX_INPUT_CHARS, MAX_ANGLES } from "@newshog/shared";
+import {
+  OPENROUTER_BASE_URL,
+  LLM_MODEL,
+  LLM_MAX_TOKENS,
+  LLM_MAX_INPUT_CHARS,
+  MAX_ANGLES,
+  STORY_VELOCITIES,
+  DEFAULT_VELOCITY,
+} from "@newshog/shared";
 import type { Angle, LlmAnalysis } from "@newshog/shared";
 import { recordLlmCall } from "@newshog/db";
 
@@ -17,7 +25,7 @@ const TOOL = {
     description: "Submit the PR newjack analysis result",
     parameters: {
       type: "object",
-      required: ["score", "why_now", "angles"],
+      required: ["score", "why_now", "velocity", "velocity_reasoning", "angles"],
       properties: {
         score: {
           type: "number",
@@ -26,6 +34,16 @@ const TOOL = {
         why_now: {
           type: "string",
           description: "1-2 sentence summary of why this story is relevant for PR right now",
+        },
+        velocity: {
+          type: "string",
+          enum: STORY_VELOCITIES,
+          description:
+            "Story decay rate, independent of score. breaking: fades in hours-to-days (viral launch, breaking news). standard: normal news cycle (days) — most product/funding announcements. evergreen: slow decay, weeks or longer (policy, research, structural industry shifts).",
+        },
+        velocity_reasoning: {
+          type: "string",
+          description: "One sentence, with concrete evidence from the article, justifying the velocity classification.",
         },
         angles: {
           type: "array",
@@ -51,11 +69,15 @@ export async function analyzeArticle(
   title: string | null,
   profileContext?: string,
   analysisId?: string,
+  researchContext?: string,
 ): Promise<LlmAnalysis> {
   const truncated = text.slice(0, LLM_MAX_INPUT_CHARS);
   const titleLine = title ? `Article title: ${title}\n\n` : "";
   const profileSection = profileContext
     ? `\n\nUser profile for tailoring angles:\n${profileContext}`
+    : "";
+  const researchSection = researchContext
+    ? `\n\nAdditional research context gathered on this topic:\n${researchContext}\n\nUse this to calibrate score, angle novelty, and timing — note if this story is one of several similar recent stories (lower novelty/score) or genuinely first-to-cover (higher score justification).`
     : "";
 
   const response = await client.chat.completions.create({
@@ -65,7 +87,10 @@ export async function analyzeArticle(
     tool_choice: { type: "function", function: { name: "submit_analysis" } },
     messages: [
       { role: "system", content: SYSTEM },
-      { role: "user", content: `${titleLine}Analyze this article:\n\n${truncated}${profileSection}` },
+      {
+        role: "user",
+        content: `${titleLine}Analyze this article:\n\n${truncated}${profileSection}${researchSection}`,
+      },
     ],
   });
 
@@ -79,6 +104,7 @@ export async function analyzeArticle(
 
   const result = JSON.parse(toolCall.function.arguments) as LlmAnalysis;
   result.score = Math.max(0, Math.min(100, Math.round(result.score)));
+  result.velocity = STORY_VELOCITIES.includes(result.velocity) ? result.velocity : DEFAULT_VELOCITY;
   result.angles = toAngleArray(result.angles as unknown).slice(0, MAX_ANGLES);
   return result;
 }

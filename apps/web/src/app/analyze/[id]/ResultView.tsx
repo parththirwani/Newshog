@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { ArrowLeft, Check, ChevronDown, Copy, Loader2, RefreshCw, Share2 } from "lucide-react";
 import { SiteHeader } from "@/components/landing/SiteHeader";
@@ -8,6 +9,7 @@ import { SiteFooter } from "@/components/landing/SiteFooter";
 import { AppShell } from "@/components/app/AppShell";
 import type { Analysis, Angle, AnalysisJournalistMatch } from "@newshog/shared";
 import { relativeTime, nextAction } from "@/lib/result-utils";
+import type { StoryVelocity } from "@newshog/shared";
 import { ScoreRing } from "@/components/app/ScoreRing";
 import { trackClient } from "@/lib/analytics-client";
 
@@ -21,13 +23,24 @@ type InitialAnalysis = {
   status: string;
   articleTitle?: string | null;
   score?: number | null;
+  velocity?: string | null;
   angles?: unknown;
   whyNow?: string | null;
   pitch?: string | null;
   error?: string | null;
   profileId?: string | null;
+  researchRunId?: string | null;
   updatedAt?: string | Date | null;
   userId?: string | null;
+};
+
+type InitialResearch = {
+  status: string;
+  lowConfidence: boolean;
+  learnings: unknown;
+  sources: unknown;
+  answer: string | null;
+  report: string | null;
 };
 
 export function ResultView({
@@ -35,11 +48,13 @@ export function ResultView({
   owner,
   user,
   initial,
+  initialResearch,
 }: {
   id: string;
   owner: boolean;
   user: { email: string } | null;
   initial?: InitialAnalysis;
+  initialResearch?: InitialResearch | null;
 }) {
   const [analysis, setAnalysis] = useState<Analysis | null>(
     initial
@@ -48,11 +63,13 @@ export function ResultView({
           status: initial.status as Analysis["status"],
           articleTitle: initial.articleTitle ?? undefined,
           score: initial.score ?? undefined,
+          velocity: (initial.velocity ?? undefined) as StoryVelocity | undefined,
           angles: (Array.isArray(initial.angles) ? initial.angles : undefined) as Angle[] | undefined,
           whyNow: initial.whyNow ?? undefined,
           pitch: initial.pitch ?? undefined,
           error: initial.error ?? undefined,
           profileId: initial.profileId ?? undefined,
+          researchRunId: initial.researchRunId ?? undefined,
           updatedAt: initial.updatedAt instanceof Date ? initial.updatedAt.toISOString() : initial.updatedAt ?? undefined,
         }
       : null,
@@ -114,6 +131,10 @@ export function ResultView({
   }, [id]);
 
   const isTerminal = initial?.status === "analyzed" || initial?.status === "failed";
+
+  // Personalized analyses (owned or profile-scoped) are private — their deep
+  // research renders to the owner only. Context-free analyses are public.
+  const contextFree = !initial?.userId && !initial?.profileId;
 
   // For in-flight analyses, fetch immediately on mount (don't wait the first
   // 1500ms tick) so the score/data appears as soon as it's ready.
@@ -235,6 +256,7 @@ export function ResultView({
 
   const angles = Array.isArray(analysis?.angles) ? (analysis?.angles as Angle[]) : [];
   const score = analysis?.score;
+  const velocity = analysis?.velocity as StoryVelocity | undefined;
   const matchList = matches && Array.isArray(matches) ? matches : null;
   const matchCount = matches ? (Array.isArray(matches) ? matches.length : matches.count) : null;
 
@@ -297,7 +319,9 @@ export function ResultView({
                 Why this matters
               </h2>
               <p className="mt-3 text-base leading-relaxed text-foreground/85">{analysis.whyNow}</p>
-            </section>
+</section>
+
+            {analysis.researchRunId && (owner || contextFree) && <ResearchBacked runId={analysis.researchRunId} initial={initialResearch} />}
 
             <section className="mt-10">
               <h2 className="text-xs font-medium tracking-[0.1em] uppercase text-muted-foreground">
@@ -403,10 +427,10 @@ export function ResultView({
               </h2>
               <div className="mt-3 rounded-xl border border-border bg-card p-4">
                 <div className="flex items-center justify-between gap-4">
-                  <p className="font-medium tracking-[-0.01em]">{nextAction(score, matchCount ?? 0).timing}</p>
+                  <p className="font-medium tracking-[-0.01em]">{nextAction(score, matchCount ?? 0, velocity).timing}</p>
                   <span className="font-mono text-xs text-muted-foreground">Suggested window</span>
                 </div>
-                <p className="mt-2 text-sm leading-relaxed text-foreground/85">{nextAction(score, matchCount ?? 0).action}</p>
+                <p className="mt-2 text-sm leading-relaxed text-foreground/85">{nextAction(score, matchCount ?? 0, velocity).action}</p>
               </div>
             </section>
 
@@ -554,10 +578,217 @@ export function ResultView({
   );
 }
 
+// ── Markdown renderer ────────────────────────────────────────────────────
+// ponytail: the smallest markdown renderer that turns a research report into
+// clickable links. Deliberately not pulling react-markdown: the report the
+// model emits is a narrow subset (headings, bold, bullets, blockquotes,
+// [text](url)). If reports start carrying tables or code fences, swap this for
+// react-markdown — the consumer signature stays the same.
+
+const INLINE_RE = /\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)|\*\*([^*]+)\*\*/g;
+
+function renderInline(text: string, prefix: string): ReactNode[] {
+  const parts: ReactNode[] = [];
+  let last = 0;
+  let k = 0;
+  let match: RegExpExecArray | null;
+  INLINE_RE.lastIndex = 0;
+  while ((match = INLINE_RE.exec(text)) !== null) {
+    if (match.index > last) parts.push(text.slice(last, match.index));
+    if (match[1] !== undefined) {
+      parts.push(
+        <a key={`${prefix}-${k++}`} href={match[2]} target="_blank" rel="noopener noreferrer" className="text-accent-strong underline decoration-accent-strong/50 underline-offset-2 hover:opacity-80">
+          {match[1]}
+        </a>,
+      );
+    } else {
+      parts.push(<strong key={`${prefix}-${k++}`} className="font-semibold text-foreground/90">{match[3]}</strong>);
+    }
+    last = INLINE_RE.lastIndex;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
+function renderMarkdown(markdown: string): ReactNode[] {
+  const out: ReactNode[] = [];
+  let key = 0;
+  let list: ReactNode[] = [];
+  let para: string[] = [];
+  const flushList = () => {
+    if (list.length) out.push(<ul key={`k${key++}`} className="mt-2 space-y-2 pl-5 list-disc">{list}</ul>);
+    list = [];
+  };
+  const flushPara = () => {
+    if (para.length) {
+      out.push(
+        <p key={`k${key++}`} className="text-sm leading-relaxed text-foreground/85">
+          {para.map((line, i) => (
+            <span key={i}>
+              {i > 0 && <br />}
+              {renderInline(line, `${key}-${i}`)}
+            </span>
+          ))}
+        </p>,
+      );
+      para = [];
+    }
+  };
+
+  for (const raw of markdown.replace(/\r\n/g, "\n").split("\n")) {
+    const line = raw.trim();
+    if (!line) {
+      flushList();
+      flushPara();
+      continue;
+    }
+    const heading = line.match(/^(#{1,3})\s(.+)$/);
+    if (heading) {
+      flushList();
+      flushPara();
+      const content = renderInline(heading[2], `h${key}`);
+      const cls = "font-medium tracking-[-0.01em] text-foreground";
+      if (heading[1].length === 1) out.push(<h1 key={`k${key++}`} className={`text-lg ${cls}`}>{content}</h1>);
+      else if (heading[1].length === 2) out.push(<h2 key={`k${key++}`} className={`text-base ${cls}`}>{content}</h2>);
+      else out.push(<h3 key={`k${key++}`} className={`text-sm font-semibold text-foreground`}>{content}</h3>);
+      continue;
+    }
+    if (/^[-*]\s/.test(line)) {
+      flushPara();
+      list.push(<li key={list.length}>{renderInline(line.replace(/^[-*]\s/, ""), `li-${key}`)}</li>);
+      continue;
+    }
+    flushList();
+    para.push(line);
+  }
+  flushList();
+  flushPara();
+  return out;
+}
+
+function ResearchBacked({ runId, initial }: { runId: string; initial?: InitialResearch | null }) {
+  const [open, setOpen] = useState(false);
+  const [data, setData] = useState<{ status?: string; answer?: string | null; report?: string | null; learnings: unknown; sources: unknown } | null>(initial ?? null);
+  const [err, setErr] = useState(false);
+
+  useEffect(() => {
+    if (initial) return; // server already rendered the research — no fetch needed
+    fetch(`/api/deep-research/${runId}`)
+      .then((r) => r.json())
+      .then((d) => setData(d))
+      .catch(() => setErr(true));
+  }, [runId, initial]);
+
+  const learnings = Array.isArray(data?.learnings)
+    ? (data.learnings as Array<{ text: string; excerpt?: string; sourceUrls?: string[] }>)
+    : [];
+  const sources = Array.isArray(data?.sources) ? (data.sources as Array<{ id: number; url: string }>) : [];
+  const report = data?.report ?? data?.answer ?? "";
+  const lowConfidence = data?.status === "low_confidence" || data?.status === "truncated";
+
+  const hostOf = (url: string) => {
+    try {
+      return new URL(url).hostname.replace(/^www\./, "");
+    } catch {
+      return url;
+    }
+  };
+
+  return (
+    <section className="mt-10 rounded-2xl border border-accent-strong/30 bg-card overflow-hidden">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left"
+      >
+        <span className="inline-flex items-center gap-1.5 font-medium text-accent-strong">
+          Backed by deep research
+        </span>
+        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+          {data ? `${sources.length} ${sources.length === 1 ? "source" : "sources"}` : ""}
+          <ChevronDown className={`size-4 transition-transform ${open ? "rotate-180" : ""}`} strokeWidth={1.75} />
+        </span>
+      </button>
+      {open && (
+        <div className="space-y-4 border-t border-border px-4 py-4">
+          {!data && !err && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" strokeWidth={1.75} />
+              Loading research...
+            </div>
+          )}
+          {err && <p className="text-sm text-muted-foreground">Couldn't load the research behind this score.</p>}
+
+          {lowConfidence && (
+            <p className="rounded-lg bg-secondary/60 px-3 py-2 text-sm text-muted-foreground">
+              Research for this topic was limited — treat this analysis with extra scrutiny.
+            </p>
+          )}
+
+          {data && (
+            <>
+              {report && (
+                <div>
+                  <p className="text-xs uppercase tracking-[0.1em] text-muted-foreground mb-2">Research notes</p>
+                  <div className="space-y-1 text-sm">{renderMarkdown(report)}</div>
+                </div>
+              )}
+
+              {learnings.length > 0 && (
+                <div>
+                  <p className="text-xs uppercase tracking-[0.1em] text-muted-foreground mb-2">Why this score</p>
+                  <ul className="space-y-2">
+                    {learnings.map((l, i) => (
+                      <li key={i} className="rounded-lg bg-secondary/60 px-3 py-2 text-sm leading-relaxed text-foreground/85">
+                        {l.text}
+                        {l.excerpt && <p className="mt-1 font-mono text-xs text-muted-foreground">“{l.excerpt}”</p>}
+                        {Array.isArray(l.sourceUrls) && l.sourceUrls.length > 0 && (
+                          <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+                            {l.sourceUrls.map((url, j) => (
+                              <a
+                                key={j}
+                                href={url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 font-mono text-xs text-accent-strong underline decoration-accent-strong/50 underline-offset-2 hover:opacity-80"
+                              >
+                                {hostOf(url)}
+                              </a>
+                            ))}
+                          </p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {sources.length > 0 && (
+                <div>
+                  <p className="text-xs uppercase tracking-[0.1em] text-muted-foreground mb-2">Sources</p>
+                  <ul className="space-y-2">
+                    {sources.map((s) => (
+                      <li key={s.id} className="rounded-lg bg-card px-3 py-2">
+                        <a href={s.url} target="_blank" rel="noreferrer" className="text-sm break-all text-accent-strong underline decoration-accent-strong/50 underline-offset-2 hover:opacity-80">
+                          {s.url}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 const STAGES: Record<string, string> = {
   queued: "Queued in line...",
   scraping: "Reading the article...",
   scraped: "Assessing the story...",
+  researching: "Researching coverage and context this takes a bit longer than a quick score",
   analyzing: "Scoring what makes it newsworthy...",
 };
 

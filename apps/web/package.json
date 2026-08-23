@@ -11,6 +11,7 @@
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
     "@newshog/db": "workspace:*",
+    "@newshog/deep-research": "workspace:*",
     "@newshog/queue": "workspace:*",
     "@newshog/shared": "workspace:*",
     "@types/jsdom": "^30.0.0",
