@@ -2,6 +2,7 @@ import { Worker } from "bullmq";
 import { prisma, recordLlmCall, logStage } from "@newshog/db";
 import { ANALYZE_QUEUE, EMAIL_INGEST_QUEUE, MATCH_QUEUE, createConnection, getMatchQueue, DEEP_RESEARCH_QUEUE } from "@newshog/queue";
 import { scrapeArticle } from "./scrape";
+import { extractPublishDate } from "@newshog/deep-research";
 import { analyzeArticle } from "./analyze";
 import { fetchDigestEmails, markEmailsSeen } from "./email-fetch";
 import { extractJournalistRequests } from "./extract-requests";
@@ -9,6 +10,7 @@ import { matchRequestsToAnalysis } from "./match-requests";
 import { generatePitch } from "./generate-pitch";
 import { deepResearchWorker } from "./deep-research";
 import { deepAnalyzeArticle } from "./deep-analyze";
+import { applyGrounding } from "./postprocess";
 import type { ExpertiseSummary, CompanyContext, JournalistRequest } from "@newshog/shared";
 
 function stringList(value: unknown): string {
@@ -70,6 +72,7 @@ const analyzeWorker = new Worker(
 
     try {
       const scraped = await scrapeArticle(analysis.url);
+      const publishedAt = extractPublishDate(scraped.text);
 
       await prisma.analysis.update({
         where: { id: analysisId },
@@ -78,6 +81,7 @@ const analyzeWorker = new Worker(
           articleTitle: scraped.title,
           rawArticleText: scraped.text,
           extractionMode: scraped.mode,
+          ...(publishedAt ? { sourcePublishedAt: publishedAt } : {}),
         },
       });
 
@@ -102,6 +106,7 @@ const analyzeWorker = new Worker(
       // same Analysis shape — just a researchRunId link + richer grounding.
       let researchContext: string | undefined;
       let researchRunId: string | null = null;
+      let coverageSignal: import("@newshog/shared").CoverageSignal | null | undefined;
       if (deepResearch) {
         await prisma.analysis.update({
           where: { id: analysisId },
@@ -113,9 +118,12 @@ const analyzeWorker = new Worker(
           articleText: scraped.text,
           analysisId,
           analysisUserId: analysis.userId ?? null,
+          articleUrl: analysis.url,
+          articlePublishedAt: publishedAt ? publishedAt.toISOString() : null,
         });
         researchContext = research.digest;
         researchRunId = research.runId;
+        coverageSignal = research.coverageSignal;
 
         // Research set "researching" — reset to "analyzing" before the LLM.
         await prisma.analysis.update({
@@ -124,7 +132,26 @@ const analyzeWorker = new Worker(
         });
       }
 
-      const result = await analyzeArticle(scraped.text, scraped.title, profileContext, analysisId, researchContext);
+      // Free (non-deep) calls get no grounding arg — coverageSignal is null and
+      // the model/the scorer run exactly as before.
+      const analysisArgs: Parameters<typeof analyzeArticle> = [
+        scraped.text,
+        scraped.title,
+        profileContext,
+        analysisId,
+        researchContext,
+      ];
+      if (coverageSignal) {
+        analysisArgs.push({ sourcePublishedAt: publishedAt?.toISOString() ?? null, coverageSignal });
+      }
+      const result = await analyzeArticle(...analysisArgs);
+
+      // Deterministic post-processing: saturation + precedes overrides. Free
+      // (non-deep) scores have no coverageSignal so nothing is adjusted.
+      const grounded = applyGrounding(result, {
+        sourcePublishedAt: publishedAt?.toISOString() ?? null,
+        coverageSignal,
+      });
 
       let pitch: string | undefined;
       try {
@@ -144,11 +171,14 @@ const analyzeWorker = new Worker(
         where: { id: analysisId },
         data: {
           status: "analyzed",
-          score: result.score,
-          velocity: result.velocity,
+          score: grounded.score,
+          velocity: grounded.velocity,
           velocityReasoning: result.velocity_reasoning,
           whyNow: result.why_now,
           angles: result.angles,
+          ...(grounded.noveltyScore != null ? { noveltyScore: grounded.noveltyScore } : {}),
+          ...(grounded.eventTiming ? { eventTiming: grounded.eventTiming } : {}),
+          ...(coverageSignal ? { coverageSignal } : {}),
           ...(researchRunId ? { researchRunId } : {}),
           ...(pitch ? { pitch } : {}),
         },

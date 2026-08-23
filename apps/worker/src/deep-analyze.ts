@@ -1,6 +1,7 @@
 import { prisma, recordLlmCall, logStage } from "@newshog/db";
 import { runResearch, createTokenBudget, createOpenRouterHandler, createEventEmitter } from "@newshog/deep-research";
-import type { Learning } from "@newshog/deep-research";
+import type { Learning, ResearchOutcome } from "@newshog/deep-research";
+import type { CoverageSignal } from "@newshog/shared";
 
 const MAX_SEED_PREVIEW = 400;
 const MAX_DIGEST_LEARNINGS = 20;
@@ -10,6 +11,36 @@ export interface DeepAnalysisResult {
   promptTokens: number;
   completionTokens: number;
   digest: string;
+  /** Saturation signal for the analysis prompt + deterministic scoring. */
+  coverageSignal?: CoverageSignal | null;
+}
+
+/**
+ * Build the saturation signal from discovered sources + their dates. Excludes
+ * the submitted article's own URL; counts distinct dated sources discovered by
+ * research. Returns null (never throws) when outcomes are empty.
+ */
+export function buildCoverageSignal(
+  visitedUrls: string[],
+  sourceDates: Record<string, string>,
+  articleUrl?: string,
+  articlePublishedAt?: string | null,
+): CoverageSignal | null {
+  const external = visitedUrls
+    .filter((url) => url !== articleUrl)
+    .filter((url) => sourceDates[url]);
+  if (external.length === 0) {
+    return { externalSourceCount: 0, precedesSubmittedArticle: false };
+  }
+  const ms = external.map((url) => Date.parse(sourceDates[url]));
+  const earliest = Math.min(...ms);
+  const submitted = articlePublishedAt ? Date.parse(articlePublishedAt as string) : null;
+  return {
+    externalSourceCount: external.length,
+    earliestSourceDate: new Date(earliest).toISOString(),
+    latestSourceDate: new Date(Math.max(...ms)).toISOString(),
+    precedesSubmittedArticle: submitted !== null && earliest < submitted,
+  };
 }
 
 /**
@@ -50,8 +81,10 @@ export async function deepAnalyzeArticle(props: {
   articleText: string;
   analysisId: string;
   analysisUserId?: string | null;
+  articleUrl?: string;
+  articlePublishedAt?: string | null;
 }): Promise<DeepAnalysisResult> {
-  const { title, articleText, analysisId, analysisUserId } = props;
+  const { title, articleText, analysisId, analysisUserId, articleUrl, articlePublishedAt } = props;
   const seed = buildSeedQuery(title, articleText);
   logStage("deep_analyze_research_start", { analysisId });
 
@@ -107,6 +140,7 @@ export async function deepAnalyzeArticle(props: {
   }).catch((err) => console.error("[deep-analyze] persist research run failed:", err));
 
   const digest = compileDigest(outcome.learnings, outcome.sources);
+  const coverageSignal = buildCoverageSignal(outcome.visitedUrls, outcome.sourceDates, articleUrl, articlePublishedAt);
 
   // Record the research spend against the analysis for cost/credit accounting.
   recordLlmCall(
@@ -116,5 +150,5 @@ export async function deepAnalyzeArticle(props: {
   );
 
   logStage("deep_analyze_research_done", { analysisId, learnings: outcome.learnings.length, truncated: outcome.truncated });
-  return { runId: run.runId, digest, promptTokens: outcome.promptTokens, completionTokens: outcome.completionTokens };
+  return { runId: run.runId, digest, promptTokens: outcome.promptTokens, completionTokens: outcome.completionTokens, coverageSignal };
 }

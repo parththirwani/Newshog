@@ -4,6 +4,7 @@ export * from "./Json";
 export { planPrompt, subQuestionPrompt, clarificationPrompt, learningsPrompt, answerPrompt, reportPrompt, repairPrompt } from "./Prompts";
 export { getSearchProvider, setSearchProvider, createDdgProvider, createBingProvider, createFailoverProvider, parseDdgHtml, parseBingHtml, normalizeSearchResults } from "./Search";
 export { scrapeArticle, scrapeMarkdown, extractMarkdown, MAX_MARKDOWN_LENGTH } from "./Scrape";
+export { extractPublishDate } from "./Dates";
 export { enforceReport, isGrounded, isAnalysisSentence, segmentReport, citationUrls, normalizeCitation } from "./Verify";
 export type { EnforcementResult, RepairFn, Rewrite, Sentence } from "./Verify";
 export { runResearch, generateClarificationQuestions, validateClarificationAnswers, mergeLearnings, citationSources, buildResearchContext } from "./Service";

@@ -20,3 +20,31 @@ export const LLM_COMPLETION_PRICE_PER_M = 1.25;
 export const LLM_DAILY_ALERT_USD = 5;
 
 export const ANALYSIS_DEDUPE_HOURS = 24;
+
+// Coverage saturation: how many independent external sources it takes for a
+// story to stop being a fresh/breaking pitch. Tunable without re-prompting.
+export const SATURATION_THRESHOLD = 10;
+
+/**
+ * Saturation score penalty, keyed by external source count. All values are
+ * deductions applied deterministically in postprocessing — the model never
+ * sees or sets them. Keeps the "is this saturated" judgment auditable and
+ * adjustable independent of prompt wording. Clamp inputs >= the last bucket.
+ */
+const SATURATION_PENALTIES: Array<number | undefined> = [
+  0,    // 0-0  sources: no penalty (first-to-cover)
+  0,    // 1
+  0,    // 2
+  0,    // 3
+  2,    // 4
+  3,    // 5
+  5,    // 6
+  7,    // 7
+  8,    // 8
+  9,    // 9
+  10,   // 10+ — heavily covered: meaningful deduction
+];
+export function saturationPenalty(externalSourceCount: number): number {
+  const i = Math.min(Math.max(0, Math.floor(externalSourceCount)), SATURATION_PENALTIES.length - 1);
+  return SATURATION_PENALTIES[i] ?? 0;
+}

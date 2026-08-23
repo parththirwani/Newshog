@@ -9,7 +9,7 @@ import { SiteFooter } from "@/components/landing/SiteFooter";
 import { AppShell } from "@/components/app/AppShell";
 import type { Analysis, Angle, AnalysisJournalistMatch } from "@newshog/shared";
 import { relativeTime, nextAction } from "@/lib/result-utils";
-import type { StoryVelocity } from "@newshog/shared";
+import type { StoryVelocity, CoverageSignal } from "@newshog/shared";
 import { ScoreRing } from "@/components/app/ScoreRing";
 import { trackClient } from "@/lib/analytics-client";
 
@@ -30,6 +30,10 @@ type InitialAnalysis = {
   error?: string | null;
   profileId?: string | null;
   researchRunId?: string | null;
+  sourcePublishedAt?: string | null;
+  eventTiming?: string | null;
+  coverageSignal?: CoverageSignal | null;
+  noveltyScore?: number | null;
   updatedAt?: string | Date | null;
   userId?: string | null;
 };
@@ -321,7 +325,9 @@ export function ResultView({
               <p className="mt-3 text-base leading-relaxed text-foreground/85">{analysis.whyNow}</p>
 </section>
 
-            {analysis.researchRunId && (owner || contextFree) && <ResearchBacked runId={analysis.researchRunId} initial={initialResearch} />}
+            {analysis.researchRunId && (owner || contextFree) && (
+              <ResearchBacked runId={analysis.researchRunId} initial={initialResearch} coverage={initial?.coverageSignal ?? null} />
+            )}
 
             <section className="mt-10">
               <h2 className="text-xs font-medium tracking-[0.1em] uppercase text-muted-foreground">
@@ -550,15 +556,8 @@ export function ResultView({
           </>
         )}
 
-        {!analysis && !analysisErr && (
-          <div className="mt-8 flex items-center justify-center gap-2 py-24 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" strokeWidth={1.75} />
-            Loading analysis...
-          </div>
-        )}
-
-        {analysis && analysis.status !== "analyzed" && analysis.status !== "failed" && !analysisErr && (
-          <AnalysisLoader status={analysis.status} />
+        {(!analysis || (analysis.status !== "analyzed" && analysis.status !== "failed")) && !analysisErr && (
+          <AnalysisLoader status={analysis?.status} />
         )}
     </>
   );
@@ -666,7 +665,7 @@ function renderMarkdown(markdown: string): ReactNode[] {
   return out;
 }
 
-function ResearchBacked({ runId, initial }: { runId: string; initial?: InitialResearch | null }) {
+function ResearchBacked({ runId, initial, coverage }: { runId: string; initial?: InitialResearch | null; coverage?: CoverageSignal | null }) {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<{ status?: string; answer?: string | null; report?: string | null; learnings: unknown; sources: unknown } | null>(initial ?? null);
   const [err, setErr] = useState(false);
@@ -710,6 +709,14 @@ function ResearchBacked({ runId, initial }: { runId: string; initial?: InitialRe
       </button>
       {open && (
         <div className="space-y-4 border-t border-border px-4 py-4">
+          {coverage && coverage.externalSourceCount > 0 && (
+            <p className="rounded-lg bg-secondary/60 px-3 py-2 text-sm text-foreground/85">
+              {coverage.externalSourceCount} other {coverage.externalSourceCount === 1 ? "source" : "sources"} found covering this story
+              {coverage.earliestSourceDate && coverage.latestSourceDate
+                ? ` · ${coverage.earliestSourceDate.slice(0, 10)} to ${coverage.latestSourceDate.slice(0, 10)}`
+                : ""}
+            </p>
+          )}
           {!data && !err && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" strokeWidth={1.75} />
@@ -792,7 +799,7 @@ const STAGES: Record<string, string> = {
   analyzing: "Scoring what makes it newsworthy...",
 };
 
-export function AnalysisLoader({ status }: { status: string }) {
+export function AnalysisLoader({ status }: { status?: string }) {
   const [pct, setPct] = useState(20);
   useEffect(() => {
     const t = setInterval(() => setPct((p) => Math.min(95, p + 2)), 220);

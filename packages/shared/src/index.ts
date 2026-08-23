@@ -12,6 +12,8 @@ export {
   LLM_COMPLETION_PRICE_PER_M,
   LLM_DAILY_ALERT_USD,
   ANALYSIS_DEDUPE_HOURS,
+  SATURATION_THRESHOLD,
+  saturationPenalty,
 } from "./constants";
 export type {
   Angle,
@@ -19,6 +21,8 @@ export type {
   AnalysisStatus,
   Analysis,
   StoryVelocity,
+  EventTiming,
+  CoverageSignal,
   ProfileType,
   ExpertiseSummary,
   CompanyContext,

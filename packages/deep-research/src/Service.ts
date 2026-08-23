@@ -24,6 +24,7 @@ import { getSearchProvider } from "./Search";
 import { enforceReport } from "./Verify";
 import type { RepairFn, Rewrite } from "./Verify";
 import type { ClarificationAnswer, ClarificationQuestion, DeepResearchInput, Learning, ResearchSource, SearchResult } from "./types";
+import { extractPublishDate } from "./Dates";
 
 export const SEARCH_CONCURRENCY = 2;
 export const MAX_SOURCES_PER_QUERY = 5;
@@ -92,6 +93,8 @@ interface ResearchState {
   learnings: Learning[];
   visitedUrls: string[];
   coveredQueries: string[];
+  /** url → ISO publish date, filled as sources are scraped, for coverage signal. */
+  sourceDates: Record<string, string>;
 }
 
 interface Deps {
@@ -168,6 +171,10 @@ async function analyzeSearchQuery(args: {
       return { ...source, markdown: source.snippet };
     }
   });
+  for (const source of scraped) {
+    const d = extractPublishDate(source.markdown);
+    if (d) state.sourceDates[source.url] = d.toISOString();
+  }
 
   const contents = scraped
     .filter((source) => source.markdown)
@@ -331,6 +338,8 @@ export interface ResearchOutcome {
   visitedUrls: string[];
   coveredQueries: string[];
   sources: ResearchSource[];
+  /** url → ISO publish date, for building a coverage signal. */
+  sourceDates: Record<string, string>;
   text?: string;
   answer?: string;
   report?: string;
@@ -364,7 +373,7 @@ export async function runResearch(input: DeepResearchInput, deps: Partial<Deps> 
   };
 
   const context = buildResearchContext(input.query, input.clarificationAnswers ?? []);
-  const state: ResearchState = { learnings: [], visitedUrls: [], coveredQueries: [] };
+  const state: ResearchState = { learnings: [], visitedUrls: [], coveredQueries: [], sourceDates: {} };
   fullDeps.emit.emit("research.started", { query: input.query, breadth: input.breadth, depth: input.depth, mode: input.mode });
 
   let truncated = false;
@@ -430,6 +439,7 @@ export async function runResearch(input: DeepResearchInput, deps: Partial<Deps> 
       visitedUrls: [...new Set(state.visitedUrls)],
       coveredQueries: [...state.coveredQueries],
       sources: final.sources,
+      sourceDates: state.sourceDates,
       promptTokens: budget.promptTokens,
       completionTokens: budget.completionTokens,
       truncated: false,
@@ -456,6 +466,7 @@ export async function runResearch(input: DeepResearchInput, deps: Partial<Deps> 
     visitedUrls: [...new Set(state.visitedUrls)],
     coveredQueries: [...state.coveredQueries],
     sources: [],
+    sourceDates: state.sourceDates,
     promptTokens: budget.promptTokens,
     completionTokens: budget.completionTokens,
     truncated,

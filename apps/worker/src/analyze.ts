@@ -8,7 +8,7 @@ import {
   STORY_VELOCITIES,
   DEFAULT_VELOCITY,
 } from "@newshog/shared";
-import type { Angle, LlmAnalysis } from "@newshog/shared";
+import type { Angle, LlmAnalysis, CoverageSignal } from "@newshog/shared";
 import { recordLlmCall } from "@newshog/db";
 
 const client = new OpenAI({
@@ -59,10 +59,44 @@ const TOOL = {
             },
           },
         },
+        novelty_score: {
+          type: "number",
+          description: "How first-to-cover / differentiated this story is, 0-100. High = genuinely novel / not yet widely covered. Low = one of several similar recent stories. Grounded in the coverage signal when provided.",
+        },
+        event_timing: {
+          type: "string",
+          enum: ["past", "ongoing", "upcoming"],
+          description: "Whether the underlying event driving the story already happened (past), is currently unfolding (ongoing), or has not happened yet (upcoming).",
+        },
       },
     },
   },
 };
+
+/** Combined grounding block fed to the model on deep-research-backed calls only. */
+function buildGroundingBlock(grounding: {
+  sourcePublishedAt?: string | null;
+  coverageSignal?: CoverageSignal | null;
+}): string {
+  const lines: string[] = [];
+  const pubDate = grounding.sourcePublishedAt;
+  if (pubDate) {
+    const days = Math.max(0, Math.floor((Date.now() - Date.parse(pubDate)) / 86_400_000));
+    lines.push(`Article publish date: ${pubDate.slice(0, 10)} (${days} day${days === 1 ? "" : "s"} ago).`);
+  }
+  const cov = grounding.coverageSignal;
+  if (cov) {
+    const span = cov.earliestSourceDate && cov.latestSourceDate
+      ? `spanning ${cov.earliestSourceDate.slice(0, 10)} to ${cov.latestSourceDate.slice(0, 10)}`
+      : "";
+    const precedes = cov.precedesSubmittedArticle
+      ? "Earlier coverage exists — this article is not the origin story."
+      : "No earlier coverage found — this appears to be first-to-cover or genuinely novel.";
+    lines.push(`Independent coverage found: ${cov.externalSourceCount} source${cov.externalSourceCount === 1 ? "" : "s"}${span ? `, ${span}` : ""}. ${precedes}`);
+  }
+  if (!lines.length) return "";
+  return `\n\n${lines.join(" ")}\n\nScore should reflect PR opportunity, not just newsworthiness. A genuinely important story already saturated with coverage is a WEAKER pitch opportunity than a moderately interesting story nobody has covered yet — weight both independence/novelty and newsworthiness, and set novelty_score accordingly.`;
+}
 
 export async function analyzeArticle(
   text: string,
@@ -70,6 +104,10 @@ export async function analyzeArticle(
   profileContext?: string,
   analysisId?: string,
   researchContext?: string,
+  grounding?: {
+    sourcePublishedAt?: string | null;
+    coverageSignal?: CoverageSignal | null;
+  },
 ): Promise<LlmAnalysis> {
   const truncated = text.slice(0, LLM_MAX_INPUT_CHARS);
   const titleLine = title ? `Article title: ${title}\n\n` : "";
@@ -79,6 +117,7 @@ export async function analyzeArticle(
   const researchSection = researchContext
     ? `\n\nAdditional research context gathered on this topic:\n${researchContext}\n\nUse this to calibrate score, angle novelty, and timing — note if this story is one of several similar recent stories (lower novelty/score) or genuinely first-to-cover (higher score justification).`
     : "";
+  const coverageBlock = grounding ? buildGroundingBlock(grounding) : "";
 
   const response = await client.chat.completions.create({
     model: LLM_MODEL,
@@ -89,7 +128,7 @@ export async function analyzeArticle(
       { role: "system", content: SYSTEM },
       {
         role: "user",
-        content: `${titleLine}Analyze this article:\n\n${truncated}${profileSection}${researchSection}`,
+        content: `${titleLine}Analyze this article:\n\n${truncated}${profileSection}${researchSection}${coverageBlock}`,
       },
     ],
   });
@@ -104,6 +143,8 @@ export async function analyzeArticle(
 
   const result = JSON.parse(toolCall.function.arguments) as LlmAnalysis;
   result.score = Math.max(0, Math.min(100, Math.round(result.score)));
+  if (result.noveltyScore != null) result.noveltyScore = Math.max(0, Math.min(100, Math.round(result.noveltyScore)));
+  if (result.eventTiming != null && !["past", "ongoing", "upcoming"].includes(result.eventTiming)) result.eventTiming = undefined;
   result.velocity = STORY_VELOCITIES.includes(result.velocity) ? result.velocity : DEFAULT_VELOCITY;
   result.angles = toAngleArray(result.angles as unknown).slice(0, MAX_ANGLES);
   return result;

@@ -88,7 +88,7 @@ export function UrlInput({
             {m === "quick" ? "Quick score" : (
               <>
                 Deep Research
-                {!pro && <span className="label-mono text-[10px] text-accent-strong font-semibold">PRO</span>}
+                <span className="label-mono text-[10px] text-accent-strong font-semibold">PRO</span>
               </>
             )}
           </button>

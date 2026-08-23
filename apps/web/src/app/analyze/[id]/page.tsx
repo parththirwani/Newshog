@@ -37,6 +37,10 @@ async function getFullAnalysis(id: string) {
       profileId: true,
       userId: true,
       researchRunId: true,
+      sourcePublishedAt: true,
+      eventTiming: true,
+      coverageSignal: true,
+      noveltyScore: true,
       updatedAt: true,
     },
   });

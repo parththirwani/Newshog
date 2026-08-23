@@ -24,6 +24,10 @@ export async function GET(
         profileId: true,
         userId: true,
         researchRunId: true,
+        sourcePublishedAt: true,
+        eventTiming: true,
+        coverageSignal: true,
+        noveltyScore: true,
         updatedAt: true,
       },
     });

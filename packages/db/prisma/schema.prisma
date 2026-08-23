@@ -131,6 +131,10 @@ model Analysis {
   userId            String?         @map("user_id")
   anonId            String?         @map("anon_id")
   researchRunId     String?         @map("research_run_id")
+  sourcePublishedAt DateTime?       @map("source_published_at")
+  eventTiming       String?         @map("event_timing")
+  coverageSignal    Json?           @map("coverage_signal")
+  noveltyScore      Int?            @map("novelty_score")
   createdAt         DateTime        @default(now()) @map("created_at")
   updatedAt         DateTime        @updatedAt @map("updated_at")
 

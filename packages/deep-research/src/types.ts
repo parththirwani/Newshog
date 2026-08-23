@@ -16,6 +16,8 @@ export interface ResearchSource {
   url: string;
   claimText?: string;
   excerpt?: string;
+  /** Publisher date extracted from the source, ISO, when findable. */
+  publishDate?: string;
   /** Audit-only: not surfaced in the client route. Status is written for
    *  debugging/tuning the grounding heuristic; the UI never renders a badge. */
   status: "verified" | "unverified" | "failed";
