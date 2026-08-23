@@ -258,10 +258,7 @@ export function ResultView({
         )}
 
         {analysis?.status === "failed" && (
-          <div className="mt-8 rounded-2xl border border-destructive/50 bg-card p-6">
-            <p className="text-sm font-medium text-destructive">Analysis failed</p>
-            <p className="mt-1 text-sm text-muted-foreground">{analysis.error}</p>
-          </div>
+          <AnalysisError error={analysis.error} />
         )}
 
         {analysis?.status === "analyzed" && score != null && (
@@ -535,6 +532,10 @@ export function ResultView({
             Loading analysis...
           </div>
         )}
+
+        {analysis && analysis.status !== "analyzed" && analysis.status !== "failed" && !analysisErr && (
+          <AnalysisLoader status={analysis.status} />
+        )}
     </>
   );
 
@@ -549,6 +550,84 @@ export function ResultView({
         {content}
       </main>
       <SiteFooter />
+    </div>
+  );
+}
+
+const STAGES: Record<string, string> = {
+  queued: "Queued in line...",
+  scraping: "Reading the article...",
+  scraped: "Assessing the story...",
+  analyzing: "Scoring what makes it newsworthy...",
+};
+
+export function AnalysisLoader({ status }: { status: string }) {
+  const [pct, setPct] = useState(20);
+  useEffect(() => {
+    const t = setInterval(() => setPct((p) => Math.min(95, p + 2)), 220);
+    return () => clearInterval(t);
+  }, []);
+  const label = STAGES[status] ?? "Working on your analysis...";
+  return (
+<div className="mt-8 flex flex-col items-center py-24">
+      <div className="flex gap-1.5" aria-hidden>
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className="size-1.5 rounded-full bg-accent-strong/70"
+            style={{ animation: `newshog-bar 0.9s ${i * 0.18}s ease-in-out infinite` }}
+          />
+        ))}
+      </div>
+      <p className="mt-6 text-sm font-medium text-foreground/90">{label}</p>
+      <p className="mt-1.5 font-mono text-xs text-muted-foreground">{pct}%</p>
+      <div className="mt-4 h-1 w-44 overflow-hidden rounded-full bg-border/70">
+        <div className="h-full rounded-full bg-accent-strong" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+export function AnalysisError({ error }: { error?: string | null }) {
+  return (
+    <div className="mt-8 flex flex-col items-center py-24">
+      <div className="relative" aria-hidden>
+        <div className="absolute inset-0 rounded-full border border-destructive/40" style={{ animation: "newshog-pulse 1.8s ease-in-out infinite" }} />
+        <div className="relative flex size-12 items-center justify-center rounded-full border border-destructive/60 bg-card">
+          <svg viewBox="0 0 24 24" className="size-5 text-destructive" strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <line x1="3" y1="3" x2="21" y2="3" stroke="currentColor" strokeWidth="2" />
+            <line x1="10" y1="8" x2="14" y2="8" stroke="currentColor" strokeWidth="2" />
+            <line x1="8" y1="13" x2="16" y2="13" stroke="currentColor" strokeWidth="2" />
+            <line x1="6" y1="19" x2="18" y2="19" stroke="currentColor" strokeWidth="2" />
+            <line x1="6" y1="7" x2="6" y2="21" stroke="currentColor" strokeWidth="2" />
+            <line x1="18" y1="7" x2="18" y2="21" stroke="currentColor" strokeWidth="2" />
+          </svg>
+        </div>
+      </div>
+      <p className="mt-6 text-lg font-semibold tracking-[-0.01em] text-destructive">Couldn't analyze this story</p>
+      <p className="mt-1.5 text-sm leading-relaxed text-foreground/70">
+        The site may be blocking access, or the article isn't reachable right now.
+      </p>
+      {error && (
+        <code className="mt-4 rounded-lg border border-border/60 bg-secondary/60 px-3 py-1.5 font-mono text-xs text-foreground/70 break-all">
+          {error}
+        </code>
+      )}
+      <div className="mt-6 flex flex-wrap items-center gap-2">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 rounded-full bg-accent-strong px-4 py-2 text-sm font-medium text-background transition-opacity hover:opacity-90"
+        >
+          Try another story
+        </Link>
+        <button
+          onClick={() => window.location.reload()}
+          className="inline-flex items-center gap-1.5 rounded-full border border-border px-4 py-2 text-sm transition-colors hover:bg-secondary disabled:opacity-70"
+        >
+          <RefreshCw className="size-3.5" strokeWidth={1.75} />
+          Retry
+        </button>
+      </div>
     </div>
   );
 }
