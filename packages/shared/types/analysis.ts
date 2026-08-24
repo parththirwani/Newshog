@@ -65,6 +65,17 @@ export type AnalysisStatus =
   | "analyzed"
   | "failed";
 
+export type ContentKind = "pitch" | "blog" | "post";
+export type PostPlatform = "linkedin" | "twitter";
+
+/** Editable blog/post drafts. Metadata (fit_assessment, time_framing) is
+ *  deliberately not stored — it's a one-shot banner on generation. Ceiling:
+ *  persist it when the UI renders badges from it after a reload. */
+export interface ContentDrafts {
+  blog?: string;
+  post?: string;
+}
+
 export interface Analysis {
   id: string;
   url?: string;
@@ -75,6 +86,7 @@ export interface Analysis {
   angles?: Angle[];
   whyNow?: string;
   pitch?: string;
+  drafts?: ContentDrafts;
   error?: string;
   profileId?: string | null;
   researchRunId?: string | null;

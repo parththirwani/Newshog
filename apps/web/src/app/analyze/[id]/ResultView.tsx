@@ -7,7 +7,7 @@ import { ArrowLeft, Check, ChevronDown, Copy, Loader2, RefreshCw, Share2 } from 
 import { SiteHeader } from "@/components/landing/SiteHeader";
 import { SiteFooter } from "@/components/landing/SiteFooter";
 import { AppShell } from "@/components/app/AppShell";
-import type { Analysis, Angle, AnalysisJournalistMatch } from "@newshog/shared";
+import type { Analysis, Angle, AnalysisJournalistMatch, ContentKind } from "@newshog/shared";
 import { relativeTime, nextAction } from "@/lib/result-utils";
 import type { StoryVelocity, CoverageSignal } from "@newshog/shared";
 import { ScoreRing } from "@/components/app/ScoreRing";
@@ -15,6 +15,11 @@ import { trackClient } from "@/lib/analytics-client";
 
 const btnSecondary =
   "inline-flex items-center gap-1.5 rounded-full border border-border px-3.5 py-1.5 text-sm transition-colors hover:bg-secondary disabled:opacity-70";
+
+const kindTab = (active: boolean) =>
+  active
+    ? "rounded-full bg-foreground px-3.5 py-1.5 text-sm font-medium text-background"
+    : "rounded-full px-3.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-secondary";
 
 type MatchResponse = AnalysisJournalistMatch[] | { count: number };
 
@@ -27,6 +32,7 @@ type InitialAnalysis = {
   angles?: unknown;
   whyNow?: string | null;
   pitch?: string | null;
+  drafts?: unknown;
   error?: string | null;
   profileId?: string | null;
   researchRunId?: string | null;
@@ -83,18 +89,35 @@ export function ResultView({
   const [matchesErr, setMatchesErr] = useState(false);
 
   const [expanded, setExpanded] = useState<number | null>(null);
-  const [draft, setDraft] = useState(initial?.pitch ?? "");
+  const initialDrafts = (initial?.drafts as { blog?: string; post?: string } | undefined) ?? {};
+  const [drafts, setDrafts] = useState<Record<string, string>>({
+    pitch: initial?.pitch ?? "",
+    blog: initialDrafts.blog ?? "",
+    post: initialDrafts.post ?? "",
+  });
+  const [activeKind, setActiveKind] = useState<ContentKind>("pitch");
   const [selectedAngle, setSelectedAngle] = useState(
     initial?.angles && Array.isArray(initial.angles) && initial.angles.length > 0
       ? (initial.angles as Angle[])[0].title
       : "",
   );
-  const [pitchErr, setPitchErr] = useState("");
-  const [pitchLoading, setPitchLoading] = useState(false);
+  const [contentErr, setContentErr] = useState("");
+  const [contentLoading, setContentLoading] = useState(false);
+  const [contentMeta, setContentMeta] = useState<{
+    kind: ContentKind;
+    fitAssessment?: string;
+    fitNote?: string | null;
+    timeFraming?: string;
+  } | null>(null);
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
   const [profileType, setProfileType] = useState<string | null>(null);
   const generatedRef = useRef(false);
+  // ponytail: blog/post auto-gen is guarded per-kind so a persistent failure
+  // (LLM outage, 500) can't loop on the contentLoading flip — it retries on
+  // the "Generate" button instead. Ceiling: one-shot per tab visit; a "retry"
+  // on the failed banner would need error-state introspection.
+  const autoTriedRef = useRef<Record<string, boolean>>({});
   const trackedCompleteRef = useRef(false);
 
   useEffect(() => {
@@ -123,8 +146,12 @@ export function ResultView({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Request failed");
       setAnalysis(data);
-      if (!silent && data.pitch) {
-        setDraft(data.pitch);
+      if (!silent && (data.pitch || data.drafts)) {
+        if (data.pitch) setDrafts((d) => ({ ...d, pitch: data.pitch }));
+        const dd = data.drafts as { blog?: string; post?: string } | undefined;
+        if (dd) {
+          setDrafts((d) => ({ ...d, blog: dd.blog ?? d.blog, post: dd.post ?? d.post }));
+        }
         setSelectedAngle(data.angles?.[0]?.title ?? "");
       }
       return data;
@@ -194,25 +221,27 @@ export function ResultView({
     return () => { cancelled = true; };
   }, [id, analysis?.status]);
 
-  const regeneratePitch = useCallback(
-    async (angleTitle?: string) => {
-      setPitchLoading(true);
-      setPitchErr("");
+  const generate = useCallback(
+    async (kind: ContentKind, angleTitle?: string) => {
+      setContentLoading(true);
+      setContentErr("");
       try {
         const res = await fetch(`/api/analyze/${id}/pitch`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ angle: angleTitle }),
+          body: JSON.stringify({ kind, angle: angleTitle }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Failed to generate pitch.");
-        setDraft(data.pitch);
+        if (!res.ok) throw new Error(data.error || "Failed to generate.");
+        const text = data.text ?? data.pitch ?? "";
+        setDrafts((d) => ({ ...d, [kind]: text }));
+        setContentMeta(kind === "pitch" ? null : { kind, ...(data.meta ?? {}) });
         setSelectedAngle(angleTitle ?? analysis?.angles?.[0]?.title ?? "");
         await fetchStatus(true);
       } catch (err) {
-        setPitchErr(err instanceof Error ? err.message : "Failed to generate pitch.");
+        setContentErr(err instanceof Error ? err.message : "Failed to generate.");
       } finally {
-        setPitchLoading(false);
+        setContentLoading(false);
       }
     },
     [id, fetchStatus],
@@ -224,20 +253,34 @@ export function ResultView({
       analysis?.status === "analyzed" &&
       analysis.pitch == null &&
       !generatedRef.current &&
-      !pitchLoading
+      !contentLoading
     ) {
       generatedRef.current = true;
-      regeneratePitch();
+      generate("pitch");
     }
-  }, [owner, analysis?.status, analysis?.pitch, pitchLoading, regeneratePitch]);
+  }, [owner, analysis?.status, analysis?.pitch, contentLoading, generate]);
 
-  const copyPitch = useCallback(async () => {
-    if (!draft) return;
-    await navigator.clipboard.writeText(draft);
+  // One-shot auto-generation when the owner first opens the blog/post tab.
+  // Guarded by autoTriedRef so a failed generation doesn't re-fire on every
+  // contentLoading flip — the manual Generate button is the retry path.
+  useEffect(() => {
+    if (!owner || analysis?.status !== "analyzed" || contentLoading) return;
+    if (activeKind === "pitch") return;
+    if ((activeKind === "blog" && drafts.blog) || (activeKind === "post" && drafts.post)) return;
+    if (autoTriedRef.current[activeKind]) return;
+    autoTriedRef.current[activeKind] = true;
+    generate(activeKind);
+  }, [owner, analysis?.status, activeKind, drafts.blog, drafts.post, contentLoading, generate]);
+
+  const activeDraft = drafts[activeKind] ?? "";
+
+  const copyDraft = useCallback(async () => {
+    if (!activeDraft) return;
+    await navigator.clipboard.writeText(activeDraft);
     trackClient("pitch_copied");
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  }, [draft]);
+  }, [activeDraft]);
 
   const copyAngle = useCallback(async (text: string) => {
     await navigator.clipboard.writeText(text);
@@ -445,16 +488,18 @@ export function ResultView({
 
             {owner ? (
               <section className="mt-10">
-                <div className="flex items-center justify-between gap-4">
-                  <h2 className="text-xs font-semibold tracking-[0.2em] uppercase text-muted-foreground">
-                    Suggested pitch
-                  </h2>
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => { setActiveKind("pitch"); setContentMeta(null); }} className={kindTab("pitch" === activeKind)}>Pitch</button>
+                    <button onClick={() => { setActiveKind("blog"); setContentMeta(null); }} className={kindTab("blog" === activeKind)}>Blog post</button>
+                    <button onClick={() => { setActiveKind("post"); setContentMeta(null); }} className={kindTab("post" === activeKind)}>Post</button>
+                  </div>
                   {angles.length > 1 && (
                     <select
                       value={selectedAngle}
                       onChange={(e) => {
                         setSelectedAngle(e.target.value);
-                        regeneratePitch(e.target.value);
+                        generate(activeKind, e.target.value);
                       }}
                       className="rounded-full border border-border bg-card px-3 py-1.5 text-sm outline-none focus:border-foreground/40"
                     >
@@ -466,54 +511,69 @@ export function ResultView({
                     </select>
                   )}
                 </div>
+
                 <div className="mt-3">
-                  {pitchLoading && analysis?.pitch == null && (
-                    <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground">
-                      <Loader2 className="size-4 animate-spin" strokeWidth={1.75} />
-                      Writing your pitch...
+                  {contentMeta && contentMeta.kind === activeKind && (contentMeta.fitAssessment === "stretch" || (contentMeta.timeFraming && contentMeta.timeFraming !== "current")) && (
+                    <div className="mb-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                      <span className="font-medium">
+                        {contentMeta.fitAssessment === "stretch" ? "This angle is a stretch for your profile. " : ""}
+                        {contentMeta.timeFraming === "retrospective"
+                          ? "Framed as retrospective analysis, not breaking news. "
+                          : contentMeta.timeFraming === "resurfacing"
+                            ? "Framed around a fresh development of an older story. "
+                            : ""}
+                      </span>
+                      {contentMeta.fitNote && <span>{contentMeta.fitNote}</span>}
                     </div>
                   )}
-                  {!pitchLoading && analysis?.pitch == null && (
+
+                  {contentLoading && !activeDraft && (
+                    <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="size-4 animate-spin" strokeWidth={1.75} />
+                      {activeKind === "pitch" ? "Writing your pitch..." : activeKind === "blog" ? "Writing your blog post..." : "Writing your post..."}
+                    </div>
+                  )}
+                  {!contentLoading && !activeDraft && (
                     <div className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
-                      {pitchErr}
+                      {contentErr}
                       <button
-                        onClick={() => regeneratePitch(selectedAngle)}
+                        onClick={() => generate(activeKind, selectedAngle)}
                         className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-border px-3.5 py-1.5 text-sm hover:bg-secondary"
                       >
                         <RefreshCw className="size-3.5" strokeWidth={1.75} />
-                        Generate pitch
+                        {activeKind === "pitch" ? "Generate pitch" : activeKind === "blog" ? "Generate blog post" : "Generate post"}
                       </button>
                     </div>
                   )}
-                  {analysis?.pitch != null && (
+                  {activeDraft && (
                     <div>
                       <textarea
-                        value={draft}
-                        onChange={(e) => setDraft(e.target.value)}
-                        rows={9}
+                        value={activeDraft}
+                        onChange={(e) => setDrafts((d) => ({ ...d, [activeKind]: e.target.value }))}
+                        rows={activeKind === "pitch" ? 9 : 12}
                         className="w-full resize-y rounded-xl border border-border bg-card px-4 py-3 font-mono text-[13px] leading-relaxed outline-none focus:border-foreground/40"
                       />
                       <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <button onClick={copyPitch} disabled={!draft} className={btnSecondary}>
+                        <button onClick={copyDraft} disabled={!activeDraft} className={btnSecondary}>
                           {copied ? (
                             <>
                               <Check className="size-4" strokeWidth={1.75} /> Copied
                             </>
                           ) : (
                             <>
-                              <Copy className="size-4" strokeWidth={1.75} /> Copy pitch
+                              <Copy className="size-4" strokeWidth={1.75} /> Copy
                             </>
                           )}
                         </button>
                         <button
-                          onClick={() => regeneratePitch(selectedAngle)}
-                          disabled={pitchLoading}
+                          onClick={() => generate(activeKind, selectedAngle)}
+                          disabled={contentLoading}
                           className={btnSecondary}
                         >
-                          <RefreshCw className={`size-4 ${pitchLoading ? "animate-spin" : ""}`} strokeWidth={1.75} />
+                          <RefreshCw className={`size-4 ${contentLoading ? "animate-spin" : ""}`} strokeWidth={1.75} />
                           Regenerate
                         </button>
-                        {pitchErr && <span className="text-sm text-destructive">{pitchErr}</span>}
+                        {contentErr && <span className="text-sm text-destructive">{contentErr}</span>}
                       </div>
                     </div>
                   )}

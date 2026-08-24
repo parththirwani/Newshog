@@ -126,6 +126,10 @@ model Analysis {
   angles            Json?
   whyNow            String?         @map("why_now")
   pitch             String?
+  // ponytail: editable blog/post drafts live in one Json column ({ blog,
+  // post, postPlatform }) instead of two columns — no per-kind queries exist.
+  // Ceiling: promote to columns when drafts are searched or aggregated.
+  drafts            Json?           @map("drafts")
   error             String?
   profileId         String?         @map("profile_id")
   userId            String?         @map("user_id")

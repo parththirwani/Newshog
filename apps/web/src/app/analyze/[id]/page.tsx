@@ -33,6 +33,7 @@ async function getFullAnalysis(id: string) {
       angles: true,
       whyNow: true,
       pitch: true,
+      drafts: true,
       error: true,
       profileId: true,
       userId: true,

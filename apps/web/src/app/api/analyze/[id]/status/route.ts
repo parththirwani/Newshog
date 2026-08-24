@@ -20,6 +20,7 @@ export async function GET(
         angles: true,
         whyNow: true,
         pitch: true,
+        drafts: true,
         error: true,
         profileId: true,
         userId: true,
@@ -43,7 +44,7 @@ export async function GET(
     // profileId) match". Context-free analyses hold no private data. The
     // owner's userId stays out of the public response — it's the account id.
     if (!owner) {
-      const { pitch: _pitch, userId: _userId, ...pub } = analysis;
+      const { pitch: _pitch, drafts: _drafts, userId: _userId, ...pub } = analysis;
       return NextResponse.json(pub);
     }
 

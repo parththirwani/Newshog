@@ -1,5 +1,5 @@
 export type { Angle } from "./angle";
-export type { LlmAnalysis, AnalysisStatus, Analysis, StoryVelocity, EventTiming, CoverageSignal, RecentRelatedCoverage, ResurfacingConfirmation } from "./analysis";
+export type { LlmAnalysis, AnalysisStatus, Analysis, StoryVelocity, EventTiming, ContentKind, PostPlatform, ContentDrafts, CoverageSignal, RecentRelatedCoverage, ResurfacingConfirmation } from "./analysis";
 export type {
   ProfileType,
   ExpertiseSummary,

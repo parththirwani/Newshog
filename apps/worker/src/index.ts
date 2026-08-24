@@ -7,7 +7,6 @@ import { analyzeArticle } from "./analyze";
 import { fetchDigestEmails, markEmailsSeen } from "./email-fetch";
 import { extractJournalistRequests } from "./extract-requests";
 import { matchRequestsToAnalysis } from "./match-requests";
-import { generatePitch } from "./generate-pitch";
 import { deepResearchWorker } from "./deep-research";
 import { deepAnalyzeArticle } from "./deep-analyze";
 import { applyGrounding } from "./postprocess";
@@ -153,20 +152,11 @@ const analyzeWorker = new Worker(
         coverageSignal,
       });
 
-      let pitch: string | undefined;
-      try {
-        const angles = result.angles as import("@newshog/shared").Angle[];
-        pitch = await generatePitch({
-          articleTitle: scraped.title,
-          articleText: scraped.text,
-          angles,
-          profileContext,
-          analysisId,
-        });
-      } catch (err) {
-        console.error(`[worker] pitch generation failed for ${analysisId}:`, err);
-      }
-
+      // ponytail: pitch (and blog/post) generation is FE-driven on demand —
+      // worker-side eager generation spent an LLM call on every analysis even
+      // when the owner never opens the result. Analyses complete with no pitch;
+      // the result view generates it on first load. Ceiling: revisit with a
+      // batch gen job when per-analysis cost gets measured.
       await prisma.analysis.update({
         where: { id: analysisId },
         data: {
@@ -180,7 +170,6 @@ const analyzeWorker = new Worker(
           ...(grounded.eventTiming ? { eventTiming: grounded.eventTiming } : {}),
           ...(coverageSignal ? { coverageSignal } : {}),
           ...(researchRunId ? { researchRunId } : {}),
-          ...(pitch ? { pitch } : {}),
         },
       });
 

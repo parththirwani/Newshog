@@ -126,7 +126,17 @@ export async function POST(request: Request) {
     });
 
     const queue = getAnalyzeQueue();
-    await queue.add(ANALYZE_QUEUE, { analysisId: analysis.id }, { jobId: analysis.id });
+    // ponytail: transient LLM flakiness (malformed tool-call output, upstream
+    // timeouts) shows up as a hard job failure here. BullMQ default attempts=1
+    // means no retry — the analyze worker can't self-heal. Give the job 3
+    // attempts with a short backoff so a flaky provider recovers instead of
+    // burning the user's analysis. Ceiling: a permanent failure (bad URL,
+    // unanalyzable content) still burns the same 3 attempts before failing.
+    await queue.add(ANALYZE_QUEUE, { analysisId: analysis.id }, {
+      jobId: analysis.id,
+      attempts: 3,
+      backoff: { type: "exponential", delay: 3_000 },
+    });
 
     trackServer("url_pasted", { profileId: profileId ?? null });
 
