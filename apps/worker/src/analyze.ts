@@ -247,24 +247,44 @@ async function submitFirstPass(
   });
   await recordLlmCall("analysis", response.usage, analysisId);
 
-  const toolCall = response.choices[0]?.message.tool_calls?.[0];
-  if (!toolCall?.function.arguments) return null;
-
-  let parsed: LlmAnalysis;
-  try {
-    parsed = JSON.parse(toolCall.function.arguments) as LlmAnalysis;
-    // The prompt previously told the model to emit "why_this_matters" while the
-    // schema/code read "why_now". Tolerate the legacy alias so we don't reject
-    // an otherwise-valid response while the prompt change propagates.
-    const raw = parsed as Partial<LlmAnalysis> & { why_this_matters?: unknown };
-    if (raw.why_this_matters != null && raw.why_now == null) {
-      raw.why_now = String(raw.why_this_matters);
+  // Parse (and validate) one candidate payload. Returns null on anything the
+  // model failed to produce per schema — callers decide whether to retry.
+  const parsePayload = (rawArgs: unknown): LlmAnalysis | null => {
+    if (typeof rawArgs !== "string" || !rawArgs.trim()) return null;
+    let text = rawArgs.trim();
+    // Fence-strip: with tool_choice forced, the model normally returns tool
+    // args; but a transient hiccup returns the JSON as fenced text in content
+    // instead. Recover it without burning a retry.
+    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fenced) text = fenced[1].trim();
+    try {
+      const parsed = JSON.parse(text) as LlmAnalysis;
+      // The prompt previously told the model to emit "why_this_matters" while the
+      // schema/code read "why_now". Tolerate the legacy alias so we don't reject
+      // an otherwise-valid response while the prompt change propagates.
+      const raw = parsed as Partial<LlmAnalysis> & { why_this_matters?: unknown };
+      if (raw.why_this_matters != null && raw.why_now == null) {
+        raw.why_now = String(raw.why_this_matters);
+      }
+      assertWellFormed(parsed);
+      return normalize(parsed);
+    } catch {
+      return null;
     }
-    assertWellFormed(parsed);
-  } catch {
-    return null;
+  };
+
+  const toolCall = response.choices[0]?.message.tool_calls?.[0];
+  const fromTool = toolCall && parsePayload(toolCall.function.arguments);
+  if (fromTool) return fromTool;
+
+  // No (usable) tool call — the model may have answered in plain content.
+  const content = response.choices[0]?.message.content;
+  if (content) {
+    const fromContent = parsePayload(content);
+    if (fromContent) return fromContent;
   }
-  return normalize(parsed);
+
+  return null;
 }
 
 async function critiqueAnalysis(
@@ -320,6 +340,16 @@ async function critiqueAnalysis(
   if (corrected.why_now != null && typeof corrected.why_now !== "string") {
     delete corrected.why_now;
   }
+  // A critique `angles` with a headline-less member must not wipe the (already
+  // valid, headline-bearing) first-pass angles — keep the first-pass list
+  // rather than persisting an "analyzed" row with zero or hollow angles.
+  if (corrected.angles != null) {
+    const list = Array.isArray(corrected.angles) ? corrected.angles : [corrected.angles];
+    const allHaveHeadlines = list.every(
+      (a) => typeof a === "object" && a !== null && typeof (a as Angle).headline === "string" && (a as Angle).headline.trim().length > 0,
+    );
+    if (!allHaveHeadlines) delete corrected.angles;
+  }
 
   return normalize({ ...first, ...corrected });
 }
@@ -360,7 +390,19 @@ function assertWellFormed(raw: Partial<LlmAnalysis>): void {
   const anglesOk =
     Array.isArray(raw.angles) ||
     (typeof raw.angles === "object" && raw.angles !== null && typeof (raw.angles as Angle).title === "string");
-  if (!Number.isFinite(score) || typeof raw.score !== "number" || !hasWhyNow || !anglesOk) {
+  // Every angle must carry a headline — the tool schema requires it and the UI
+  // renders it; a missing headline is a malformed response just like a missing
+  // score. Reject here so the model's one clean retry gets a chance to fill it,
+  // and the job fails loudly if both passes miss.
+  const headlineOk = ((): boolean => {
+    const list = Array.isArray(raw.angles)
+      ? raw.angles
+      : typeof raw.angles === "object" && raw.angles !== null
+        ? [raw.angles]
+        : [];
+    return list.every((a) => typeof (a as Angle).headline === "string" && (a as Angle).headline.trim().length > 0);
+  })();
+  if (!Number.isFinite(score) || typeof raw.score !== "number" || !hasWhyNow || !anglesOk || !headlineOk) {
     throw new Error(
       "Malformed analysis response (missing/invalid required field). Retry the analysis.",
     );
@@ -371,11 +413,16 @@ function assertWellFormed(raw: Partial<LlmAnalysis>): void {
 // it in an array, or returns garbage strings. Normalize so callers can rely
 // on Angle[].
 function toAngleArray(value: unknown): Angle[] {
+  const keep = (v: unknown): v is Angle =>
+    typeof v === "object" && v !== null && typeof (v as Angle).title === "string";
+  // headline is enforced on the first pass by assertWellFormed; this second
+  // guard keeps a headline-less angle (e.g. from a sloppy critique merge) from
+  // ever reaching the DB, since the UI renders headlines.
   if (Array.isArray(value)) {
-    return value.filter((v): v is Angle => typeof v === "object" && v !== null && typeof (v as Angle).title === "string");
+    return value.filter((v) => keep(v) && typeof (v as Angle).headline === "string");
   }
   if (typeof value === "object" && value !== null && typeof (value as Angle).title === "string") {
-    return [value as Angle];
+    return typeof (value as Angle).headline === "string" ? [value as Angle] : [];
   }
   return [];
 }

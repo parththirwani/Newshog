@@ -231,6 +231,102 @@ describe("parseContentResult", () => {
     const { text } = parseContentResult("pitch", "Here is a draft pitch:\n\nSubject: Hi Dana\n\nBody here.");
     expect(text).toBe("Subject: Hi Dana\n\nBody here.");
   });
+
+  it("parses a blog post with unescaped quotes inside the body (no JSON leaks)", () => {
+    const model = `{
+  "title": "Microsoft's Ongoing Search Strategy",
+  "body": "Microsoft's 2008 acquisition of Powerset marked a significant milestone in the company's longstanding efforts to challenge Google's dominance in the search market.\\n\\nBack then, Powerset was pioneering a novel \\"semantic search\\" approach that aimed to better understand the intent behind user queries.",
+  "meta_description": "desc",
+  "fit_assessment": "natural",
+  "fit_note": null,
+  "time_framing": "retrospective"
+}`;
+    const { text, meta } = parseContentResult("blog", model);
+    expect(text).toContain(`novel "semantic search" approach`);
+    expect(text).not.toContain(`"body"`);
+    expect(text).not.toContain("{");
+    expect(meta?.title).toBe("Microsoft's Ongoing Search Strategy");
+    expect(meta?.timeFraming).toBe("retrospective");
+  });
+
+  it("parses pretty-printed multi-line JSON with unescaped quotes (the Wispr case)", () => {
+    const model = `{
+  "title": "Wispr's $280M Funding Fuels AI Dictation Expansion",
+  "body": "Wispr's creation of an "Interface Labs" division under the leadership of an early Amazon Alexa veteran points to their ambitions.\\n\\nOverall, this funding round is a strong vote of confidence.",
+  "meta_description": "desc",
+  "fit_assessment": "natural",
+  "fit_note": null,
+  "time_framing": "current"
+}`;
+    const { text, meta } = parseContentResult("blog", model);
+    expect(text).toContain(`"Interface Labs"`);
+    expect(text).toContain("Wispr's creation");
+    expect(text).toContain("strong vote of confidence");
+    expect(text).not.toContain('"body"');
+    expect(meta?.timeFraming).toBe("current");
+  });
+
+  it("parses a markdown-fenced JSON object", () => {
+    const raw = 'Here is the result:\n\n```json\n{"title":"T","body":"Body with \\n\\nline breaks.","fit_assessment":"natural","time_framing":"current"}\n```\n\nHope this helps.';
+    const { text, meta } = parseContentResult("blog", raw);
+    expect(text).toBe("T\n\nBody with \n\nline breaks.");
+    expect(meta?.fitAssessment).toBe("natural");
+  });
+
+  it("parses pretty-printed JSON wrapped in prose with a preamble line", () => {
+    const raw = 'Sure, here is your post:\n\n{\n  "platform": "linkedin",\n  "post": "The Powerset deal\n\nwas prescient.",\n  "fit_assessment": "natural",\n  "time_framing": "retrospective"\n}';
+    const { text, meta } = parseContentResult("post", raw);
+    expect(text).toBe("The Powerset deal\n\nwas prescient.");
+    expect(meta?.timeFraming).toBe("retrospective");
+  });
+
+  it("handles both real newlines and unescaped quotes together", () => {
+    const raw = '{"title":"T","body":"Line one\nwith a \\"quoted\\" bit.\n\nLine two.","fit_assessment":"natural"}';
+    const { text, meta } = parseContentResult("blog", raw);
+    expect(text).toContain('with a "quoted" bit.');
+    expect(text).toContain("Line one");
+    expect(meta?.fitAssessment).toBe("natural");
+  });
+
+  it("recovers the post text even when the model wraps it as a standalone object", () => {
+    const raw = 'Here is a 3-paragraph LinkedIn post reacting to the news:\n\nMicrosoft just bought Powerset and it was prescient.';
+    const { text } = parseContentResult("post", raw);
+    expect(text).toBe("Microsoft just bought Powerset and it was prescient.");
+  });
+
+  it("keeps pitch plain-text copy when the model wraps it in prose", () => {
+    const { text } = parseContentResult("pitch", "Sure, here's your pitch:\n\nSubject: Re search AI\n\nDana,\n\nI have the numbers.");
+    expect(text).toBe("Subject: Re search AI\n\nDana,\n\nI have the numbers.");
+  });
+
+  it("never returns raw JSON string in the draft even on a minimal post", () => {
+    const model = '{"platform":"linkedin","post":"tweet content","is_thread":false,"fit_assessment":"natural","time_framing":"current"}';
+    const { text, meta } = parseContentResult("post", model);
+    expect(text).toBe("tweet content");
+    expect(text).not.toContain("platform");
+    expect(meta?.timeFraming).toBe("current");
+  });
+
+  describe("returns text, never raw JSON", () => {
+    const assertNoRawJson = (label: string, kind: "post" | "blog", raw: string) => {
+      it(`post/blog output for "${label}" is content-only`, () => {
+        const { text } = parseContentResult(kind, raw);
+        expect(text.length).toBeGreaterThan(0);
+        expect(text).not.toMatch(/^\{/);
+        expect(text).not.toContain(`"platform"`);
+        expect(text).not.toContain(`"title"`);
+        expect(text).not.toContain(`: "`);
+      });
+    };
+
+    assertNoRawJson("well-formed JSON object", "blog", '{"title":"T","body":"hello","fit_note":null}');
+    assertNoRawJson("real newlines inside string", "blog", '{"title":"T","body":"line\n\ntwo","fit_note":null}');
+    assertNoRawJson("unescaped quotes", "blog", '{"title":"T","body":"he said \\"hi\\" to me","fit_note":null}');
+    assertNoRawJson("fenced JSON", "post", '```json\n{"post":"tweet","fit_assessment":"natural"}\n```');
+    assertNoRawJson("prose wrapper", "post", 'Here you go: {"post":"tweet","fit_assessment":"natural"}');
+    assertNoRawJson("preamble + loose quoting + real newlines", "blog", `{\n "title":"T",\n "body":"line1\n\nwith a \\"quote\\" and stuff."\n}`);
+    assertNoRawJson("plain prose fallback", "post", "just a plain post with no schema");
+  });
 });
 
 describe("stripPreamble", () => {

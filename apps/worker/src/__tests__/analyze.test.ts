@@ -50,6 +50,11 @@ function makeCritiqueResponse(args: object) {
   };
 }
 
+function makeContentResponse(content: string) {
+  // model answered in plain content instead of a tool call — the fallback path
+  return { choices: [{ message: { content } }] };
+}
+
 const FIRST_PASS = {
   score: 75,
   why_now: "Relevant because of X",
@@ -108,6 +113,57 @@ describe("analyzeArticle", () => {
       .mockResolvedValueOnce(makeLlmResponse({ ...FIRST_PASS, angles: null }));
 
     await expect(analyzeArticle("text", null)).rejects.toThrow(/couldn't analyze/i);
+  });
+
+  it("succeeds on retry when an angle is missing its headline", async () => {
+    const noHeadline = {
+      ...FIRST_PASS,
+      angles: [{ title: "Angle 1", why_now: "Timely", why_journalists_care: "New info" }],
+    };
+    mockCreate
+      .mockResolvedValueOnce(makeLlmResponse(noHeadline))
+      .mockResolvedValueOnce(makeLlmResponse(FIRST_PASS))
+      .mockResolvedValueOnce(makeCritiqueResponse({ approved: true, corrected_fields: null, critique_notes: ["ok"] }));
+
+    const result = await analyzeArticle("text", null);
+    expect(result.score).toBe(75);
+    expect(result.angles[0].headline).toBe("Breaking: thing");
+    expect(mockCreate).toHaveBeenCalledTimes(3); // malformed + retry + critique
+  });
+
+  it("throws when every pass delivers an angle with a missing headline", async () => {
+    const noHeadline = {
+      ...FIRST_PASS,
+      angles: [{ title: "H", why: "Timely", why_journalists_care: "New info" }],
+    };
+    mockCreate
+      .mockResolvedValueOnce(makeLlmResponse(noHeadline))
+      .mockResolvedValueOnce(makeLlmResponse(noHeadline));
+
+    await expect(analyzeArticle("text", null)).rejects.toThrow(/couldn't analyze/i);
+  });
+
+  it("recovers when the model answers in plain content instead of a tool call", async () => {
+    mockCreate
+      .mockResolvedValueOnce(makeContentResponse(JSON.stringify(FIRST_PASS)))
+      .mockResolvedValueOnce(makeCritiqueResponse({ approved: true, corrected_fields: null, critique_notes: ["ok"] }));
+
+    const result = await analyzeArticle("text", null);
+    expect(result.score).toBe(75);
+    expect(result.angles[0].headline).toBe("Breaking: thing");
+    expect(mockCreate).toHaveBeenCalledTimes(2); // first pass in content + critique
+  });
+
+  it("recovers from fenced JSON in the content answer", async () => {
+    mockCreate
+      .mockResolvedValueOnce(makeContentResponse("```json\n" + JSON.stringify(FIRST_PASS) + "\n```"))
+      .mockResolvedValueOnce(
+        makeCritiqueResponse({ approved: true, corrected_fields: null, critique_notes: ["ok"] }),
+      );
+
+    const result = await analyzeArticle("text", null);
+    expect(result.score).toBe(75);
+    expect(mockCreate).toHaveBeenCalledTimes(2);
   });
 
   it("returns parsed analysis from LLM", async () => {
@@ -214,6 +270,47 @@ describe("analyzeArticle", () => {
     );
 
     await expect(analyzeArticle("text", null)).rejects.toThrow(/couldn't analyze/i);
+  });
+
+  it("keeps the first-pass angles when a critique returns headline-less angles", async () => {
+    mockCreate
+      .mockResolvedValueOnce(makeLlmResponse(FIRST_PASS))
+      .mockResolvedValueOnce(
+        makeCritiqueResponse({
+          approved: false,
+          corrected_fields: {
+            angles: [{ title: "Changed angle", why_now: "x", why_journalists_care: "y" }],
+          },
+          critique_notes: ["tighten angle"],
+        }),
+      );
+
+    const result = await analyzeArticle("text", null);
+    // the headline-less corrected angle must not wipe the valid first-pass list
+    expect(result.angles).toHaveLength(1);
+    expect(result.angles[0].title).toBe("Angle 1");
+    expect(result.angles[0].headline).toBe("Breaking: thing");
+  });
+
+  it("applies critique angles when every corrected angle has a headline", async () => {
+    mockCreate
+      .mockResolvedValueOnce(makeLlmResponse(FIRST_PASS))
+      .mockResolvedValueOnce(
+        makeCritiqueResponse({
+          approved: false,
+          corrected_fields: {
+            angles: [
+              { title: "Refined angle", why_now: "x", why_journalists_care: "y", headline: "Refined headline" },
+            ],
+          },
+          critique_notes: ["tighten angle"],
+        }),
+      );
+
+    const result = await analyzeArticle("text", null);
+    expect(result.angles).toHaveLength(1);
+    expect(result.angles[0].title).toBe("Refined angle");
+    expect(result.angles[0].headline).toBe("Refined headline");
   });
 
   it("truncates input text to LLM_MAX_INPUT_CHARS", async () => {

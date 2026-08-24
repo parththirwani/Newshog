@@ -140,8 +140,47 @@ function repairLooseJson(s: string): string {
   return out;
 }
 
+// Models also drop the backslash before dialog/punctuation quotes inside a
+// string («a novel "semantic search" approach»), which breaks JSON.parse.
+// Repair: inside a string, a `"` is a real closing quote only when it's
+// followed by whitespace/end then a JSON structural char (`, : } ]`). Any
+// other `"` is literal prose — escape it and keep scanning. Validated by
+// JSON.parse in tryParse, so a misjudged quote fails loudly to the next
+// candidate rather than silently corrupting.
+function repairUnescapedQuotes(s: string): string {
+  let out = "";
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (inStr) {
+      if (esc) { out += ch; esc = false; continue; }
+      if (ch === "\\") { out += ch; esc = true; continue; }
+      if (ch === '"') {
+        let j = i + 1;
+        while (j < s.length && /\s/.test(s[j])) j++;
+        const next = s[j];
+        if (next === "," || next === "}" || next === "]" || next === ":" || next === undefined) {
+          inStr = false;
+          out += ch;
+        } else {
+          out += '\\"';
+        }
+        continue;
+      }
+      if (ch === "\n" || ch === "\r") { out += "\\n"; continue; }
+      out += ch;
+      continue;
+    }
+    if (ch === '"') { inStr = true; out += ch; continue; }
+    out += ch;
+  }
+  return out;
+}
+
 function tryParse(raw: string): Record<string, unknown> | null {
-  for (const candidate of [raw, repairLooseJson(raw)]) {
+  const repaired = repairLooseJson(raw);
+  for (const candidate of [raw, repaired, repairUnescapedQuotes(repaired)]) {
     try {
       const obj = JSON.parse(candidate);
       if (obj && typeof obj === "object") return obj as Record<string, unknown>;

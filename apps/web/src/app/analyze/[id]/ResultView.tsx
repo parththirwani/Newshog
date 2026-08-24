@@ -112,6 +112,8 @@ export function ResultView({
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
   const [profileType, setProfileType] = useState<string | null>(null);
+  const [personalizing, setPersonalizing] = useState(false);
+  const [personalizeErr, setPersonalizeErr] = useState("");
   const generatedRef = useRef(false);
   // ponytail: blog/post auto-gen is guarded per-kind so a persistent failure
   // (LLM outage, 500) can't loop on the contentLoading flip — it retries on
@@ -271,6 +273,35 @@ export function ResultView({
     autoTriedRef.current[activeKind] = true;
     generate(activeKind);
   }, [owner, analysis?.status, activeKind, drafts.blog, drafts.post, contentLoading, generate]);
+
+  // Attach the session user's profile to this analysis, then drop the
+  // unpersonalized drafts so pitch regenerates and blog/post regenerate on
+  // first open. The profile context flows into content generation via the
+  // /pitch route (buildProfileContext).
+  const personalize = useCallback(async () => {
+    setPersonalizing(true);
+    setPersonalizeErr("");
+    try {
+      const res = await fetch(`/api/analyze/${id}/personalize`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to personalize.");
+      // Mark the auto-gen effect as already-tried so it can't double-fire during
+      // the fetchStatus state flip below — the explicit generate() at the end is
+      // the single personalized generation (covers both the had-pitch and
+      // never-had-pitch cases).
+      generatedRef.current = true;
+      autoTriedRef.current = {};
+      setDrafts({ pitch: "", blog: "", post: "" });
+      setContentMeta(null);
+      setActiveKind("pitch");
+      await fetchStatus(true);
+      await generate("pitch");
+    } catch (err) {
+      setPersonalizeErr(err instanceof Error ? err.message : "Failed to personalize.");
+    } finally {
+      setPersonalizing(false);
+    }
+  }, [id, fetchStatus, generate]);
 
   const activeDraft = drafts[activeKind] ?? "";
 
@@ -513,15 +544,13 @@ export function ResultView({
                 </div>
 
                 <div className="mt-3">
-                  {contentMeta && contentMeta.kind === activeKind && (contentMeta.fitAssessment === "stretch" || (contentMeta.timeFraming && contentMeta.timeFraming !== "current")) && (
+                  {contentMeta && contentMeta.kind === activeKind && (contentMeta.fitAssessment === "stretch" || contentMeta.timeFraming === "resurfacing") && (
                     <div className="mb-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
                       <span className="font-medium">
                         {contentMeta.fitAssessment === "stretch" ? "This angle is a stretch for your profile. " : ""}
-                        {contentMeta.timeFraming === "retrospective"
-                          ? "Framed as retrospective analysis, not breaking news. "
-                          : contentMeta.timeFraming === "resurfacing"
-                            ? "Framed around a fresh development of an older story. "
-                            : ""}
+                        {contentMeta.timeFraming === "resurfacing"
+                          ? "Framed around a fresh development of an older story — don't post it as breaking. "
+                          : ""}
                       </span>
                       {contentMeta.fitNote && <span>{contentMeta.fitNote}</span>}
                     </div>
@@ -591,14 +620,42 @@ export function ResultView({
             {owner && !analysis.profileId && (
               <section className="mt-10 rounded-xl border border-border bg-card p-5 text-center">
                 <p className="text-sm text-muted-foreground">
-                  Want pitches written in your (or your company's) voice?
+                  Want pitches, posts, and blog posts written in your (or your company's) voice?
                 </p>
-                <Link
-                  href="/profile"
-                  className="mt-2 inline-block text-sm font-medium text-accent-strong hover:underline"
-                >
-                  Personalize this for me →
-                </Link>
+                {contextFree ? (
+                  // Public analysis: personalizing in place would silence the
+                  // shared link for everyone else — send them to re-run it with
+                  // their profile instead.
+                  <span className="mt-2 inline-block text-sm text-muted-foreground">
+                    Re-run this story from the homepage with a{" "}
+                    <Link href="/" className="font-medium text-accent-strong hover:underline">new analysis</Link>{" "}
+                    to personalize it.
+                  </span>
+                ) : profileType ? (
+                  <>
+                    <button
+                      onClick={personalize}
+                      disabled={personalizing}
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-border px-3.5 py-1.5 text-sm font-medium text-accent-strong hover:bg-secondary disabled:opacity-70"
+                    >
+                      {personalizing ? (
+                        <>
+                          <Loader2 className="size-4 animate-spin" strokeWidth={1.75} /> Personalizing...
+                        </>
+                      ) : (
+                        "Personalize this analysis →"
+                      )}
+                    </button>
+                    {personalizeErr && <p className="mt-2 text-sm text-destructive">{personalizeErr}</p>}
+                  </>
+                ) : (
+                  <Link
+                    href="/profile"
+                    className="mt-2 inline-block text-sm font-medium text-accent-strong hover:underline"
+                  >
+                    Set up your profile to personalize →
+                  </Link>
+                )}
               </section>
             )}
 
