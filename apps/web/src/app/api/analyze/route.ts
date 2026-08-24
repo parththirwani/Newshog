@@ -88,6 +88,10 @@ export async function POST(request: Request) {
         url: normalizedUrl,
         profileId: profileId || null,
         status: "analyzed",
+        // Only dedupe against complete results — a scoreless/partial "analyzed"
+        // row (legacy dev data, or a run that wrote status before score) would
+        // otherwise get returned and render as a permanent blank page. Re-run.
+        score: { not: null },
         createdAt: { gt: new Date(Date.now() - ANALYSIS_DEDUPE_HOURS * 60 * 60 * 1000) },
         OR: session
           ? [{ userId: session.id }, { userId: null, anonId: null }]

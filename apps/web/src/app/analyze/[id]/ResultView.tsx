@@ -30,7 +30,7 @@ type InitialAnalysis = {
   error?: string | null;
   profileId?: string | null;
   researchRunId?: string | null;
-  sourcePublishedAt?: string | null;
+  sourcePublishedAt?: string | Date | null;
   eventTiming?: string | null;
   coverageSignal?: CoverageSignal | null;
   noveltyScore?: number | null;
@@ -145,25 +145,28 @@ export function ResultView({
   useEffect(() => {
     if (isTerminal) return;
     let cancelled = false;
-    let attempts = 0;
     let poll: ReturnType<typeof setInterval> | undefined;
     const stop = () => {
       cancelled = true;
       if (poll) clearInterval(poll);
     };
+    // ponytail: deep research runs for minutes (not the ~60s quick-score does).
+    // The old attempts>40 tick cap froze the loader mid-run; poll on a wall-clock
+    // deadline instead. Worker always reaches analyzed/failed, so this is just a
+    // runaway-job safety net.
+    const deadline = Date.now() + 30 * 60 * 1000;
+    const done = (s: string | undefined) => s === "analyzed" || s === "failed" || Date.now() > deadline;
 
     void (async () => {
       const data = await fetchStatus();
       if (cancelled) return;
-      attempts++;
       // Completed already at load — stop. Otherwise begin polling.
-      if (!data || data.status === "analyzed" || data.status === "failed" || attempts > 40) return stop();
+      if (!data || done(data.status)) return stop();
       poll = setInterval(async () => {
         if (cancelled) return;
         const next = await fetchStatus();
         if (cancelled) return;
-        attempts++;
-        if (!next || next.status === "analyzed" || next.status === "failed" || attempts > 40) stop();
+        if (!next || done(next.status)) stop();
       }, 1500);
     })();
 
@@ -559,6 +562,24 @@ export function ResultView({
         {(!analysis || (analysis.status !== "analyzed" && analysis.status !== "failed")) && !analysisErr && (
           <AnalysisLoader status={analysis?.status} />
         )}
+
+        {/* Terminal state with no score — reached only by legacy/partial rows
+            (score is always written alongside status on a fresh run). Guard
+            against the silent blank dead-end and offer a clear re-run path. */}
+        {analysisErr ? null : (
+          analysis?.status === "analyzed" && score == null && (
+            <div className="mt-12 rounded-2xl border border-border bg-card p-8 text-center">
+              <p className="font-semibold tracking-[-0.01em]">{analysis.articleTitle || "This analysis"}</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                This run completed without a score, so there's nothing to show yet.
+                Re-run it to get the full result.
+              </p>
+              <Link href="/" className="mt-4 inline-block rounded-full bg-accent-strong px-4 py-2 text-sm font-medium text-primary-foreground">
+                Analyze a story
+              </Link>
+            </div>
+          )
+        )}
     </>
   );
 
@@ -805,7 +826,7 @@ export function AnalysisLoader({ status }: { status?: string }) {
     const t = setInterval(() => setPct((p) => Math.min(95, p + 2)), 220);
     return () => clearInterval(t);
   }, []);
-  const label = STAGES[status] ?? "Working on your analysis...";
+  const label = (status && STAGES[status]) ?? "Working on your analysis...";
   return (
 <div className="mt-8 flex flex-col items-center py-24">
       <div className="flex gap-1.5" aria-hidden>

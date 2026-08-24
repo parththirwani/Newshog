@@ -36,9 +36,78 @@ function makeLlmResponse(args: object) {
   };
 }
 
+function makeCritiqueResponse(args: object) {
+  return {
+    choices: [
+      {
+        message: {
+          tool_calls: [
+            { function: { name: "submit_critique", arguments: JSON.stringify(args) } },
+          ],
+        },
+      },
+    ],
+  };
+}
+
+const FIRST_PASS = {
+  score: 75,
+  why_now: "Relevant because of X",
+  velocity: "breaking",
+  velocity_reasoning: "Launch went viral in hours",
+  novelty_score: 90,
+  event_timing: "ongoing",
+  angles: [
+    {
+      title: "Angle 1",
+      why_now: "Timely",
+      why_journalists_care: "New info",
+      headline: "Breaking: thing",
+    },
+  ],
+};
+
 describe("analyzeArticle", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("retries once, then throws a user-facing error when the first pass is malformed (never persists a scoreless row)", async () => {
+    mockCreate
+      .mockResolvedValueOnce(makeLlmResponse({ ...FIRST_PASS, score: undefined, why_now: "", angles: [] }))
+      .mockResolvedValueOnce(makeLlmResponse({ ...FIRST_PASS, score: undefined, why_now: "", angles: [] }));
+
+    await expect(analyzeArticle("text", null)).rejects.toThrow(/couldn't analyze/i);
+    expect(mockCreate).toHaveBeenCalledTimes(2); // first + one retry
+  });
+
+  it("accepts the legacy why_this_matters alias as why_now instead of rejecting the response", async () => {
+    mockCreate
+      .mockResolvedValueOnce(makeLlmResponse({ ...FIRST_PASS, why_now: undefined, why_this_matters: "Legacy rationale" }))
+      .mockResolvedValueOnce(makeCritiqueResponse({ approved: true, corrected_fields: null, critique_notes: ["ok"] }));
+
+    const result = await analyzeArticle("text", null);
+    expect(result.why_now).toBe("Legacy rationale");
+    expect(mockCreate).toHaveBeenCalledTimes(2); // no retry needed
+  });
+
+  it("succeeds on the retry when the first pass is malformed but the retry is well-formed", async () => {
+    mockCreate
+      .mockResolvedValueOnce(makeLlmResponse({ ...FIRST_PASS, score: undefined, why_now: "", angles: [] }))
+      .mockResolvedValueOnce(makeLlmResponse(FIRST_PASS))
+      .mockResolvedValueOnce(makeCritiqueResponse({ approved: true, corrected_fields: null, critique_notes: ["ok"] }));
+
+    const result = await analyzeArticle("text", null);
+    expect(result.score).toBe(75);
+    expect(mockCreate).toHaveBeenCalledTimes(3); // malformed + retry + critique
+  });
+
+  it("throws when the first pass has no angles array (retry also malformed)", async () => {
+    mockCreate
+      .mockResolvedValueOnce(makeLlmResponse({ ...FIRST_PASS, angles: null }))
+      .mockResolvedValueOnce(makeLlmResponse({ ...FIRST_PASS, angles: null }));
+
+    await expect(analyzeArticle("text", null)).rejects.toThrow(/couldn't analyze/i);
   });
 
   it("returns parsed analysis from LLM", async () => {
@@ -139,13 +208,12 @@ describe("analyzeArticle", () => {
     expect(result.angles[0].title).toBe("Only angle");
   });
 
-  it("drops non-array garbage angles", async () => {
+  it("rejects garbage (non-object, non-array) angles as malformed", async () => {
     mockCreate.mockResolvedValue(
       makeLlmResponse({ score: 60, why_now: "ok", angles: 42 }),
     );
 
-    const result = await analyzeArticle("text", null);
-    expect(result.angles).toEqual([]);
+    await expect(analyzeArticle("text", null)).rejects.toThrow(/couldn't analyze/i);
   });
 
   it("truncates input text to LLM_MAX_INPUT_CHARS", async () => {
@@ -162,13 +230,13 @@ describe("analyzeArticle", () => {
     expect(sentText).toContain("a".repeat(8000));
   });
 
-  it("throws when no tool call in response", async () => {
+  it("retries then throws a user-facing error when no tool call is returned", async () => {
     mockCreate.mockResolvedValue({
       choices: [{ message: { tool_calls: [] } }],
     });
 
     await expect(analyzeArticle("text", null)).rejects.toThrow(
-      "No tool call in response",
+      "We couldn't analyze this story after retrying",
     );
   });
 
@@ -217,5 +285,97 @@ describe("analyzeArticle", () => {
 
     const result = await analyzeArticle("text", null);
     expect(result.velocity).toBe("standard");
+  });
+});
+
+describe("analyzeArticle — critique pass", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("calls a second, separate LLM and logs stage analysis_critique", async () => {
+    mockCreate
+      .mockResolvedValueOnce(makeLlmResponse(FIRST_PASS))
+      .mockResolvedValueOnce(makeCritiqueResponse({ approved: true, corrected_fields: null, critique_notes: ["ok"] }));
+
+    await analyzeArticle("body", "My Title", undefined, "abc-123");
+
+    expect(mockCreate).toHaveBeenCalledTimes(2);
+    const critiqueCall = mockCreate.mock.calls[1][0];
+    expect(critiqueCall.tool_choice).toEqual({ type: "function", function: { name: "submit_critique" } });
+    const critiqueContent = critiqueCall.messages[1].content as string;
+    expect(critiqueContent).toContain("First-pass analysis:");
+  });
+
+  it("returns first pass unchanged when approved", async () => {
+    mockCreate
+      .mockResolvedValueOnce(makeLlmResponse(FIRST_PASS))
+      .mockResolvedValueOnce(makeCritiqueResponse({ approved: true, corrected_fields: null, critique_notes: [] }));
+
+    const result = await analyzeArticle("text", null);
+    expect(result.score).toBe(75);
+    expect(result.angles).toHaveLength(1);
+  });
+
+  it("shallow-merges only corrected fields into the first pass", async () => {
+    mockCreate
+      .mockResolvedValueOnce(makeLlmResponse(FIRST_PASS))
+      .mockResolvedValueOnce(makeCritiqueResponse({
+        approved: false,
+        corrected_fields: { why_now: "Now corrected language", event_timing: "past" },
+        critique_notes: ["stale phrasing fixed"],
+      }));
+
+    const result = await analyzeArticle("text", null);
+    expect(result.score).toBe(75); // untouched
+    expect(result.why_now).toBe("Now corrected language");
+    expect(result.event_timing).toBe("past");
+    expect(result.angles).toHaveLength(1); // untouched
+  });
+
+  it("does not override approved fields left out of corrected_fields", async () => {
+    mockCreate
+      .mockResolvedValueOnce(makeLlmResponse(FIRST_PASS))
+      .mockResolvedValueOnce(makeCritiqueResponse({
+        approved: false,
+        corrected_fields: { velocity: "evergreen" },
+        critique_notes: ["velocity contradicted staleness"],
+      }));
+
+    const result = await analyzeArticle("text", null);
+    expect(result.velocity).toBe("evergreen");
+    expect(result.score).toBe(75);
+  });
+
+  it("falls back to first pass and does not throw when critique has no tool call", async () => {
+    mockCreate
+      .mockResolvedValueOnce(makeLlmResponse(FIRST_PASS))
+      .mockResolvedValueOnce({ choices: [{ message: { tool_calls: [] } }] });
+
+    const result = await analyzeArticle("text", null);
+    expect(result.score).toBe(75);
+  });
+
+  it("falls back to first pass when critique throws", async () => {
+    mockCreate
+      .mockResolvedValueOnce(makeLlmResponse(FIRST_PASS))
+      .mockRejectedValueOnce(new Error("timeout"));
+
+    const result = await analyzeArticle("text", null);
+    expect(result.score).toBe(75);
+  });
+
+  it("keeps the first-pass score when the critique corrects it to a malformed value", async () => {
+    mockCreate
+      .mockResolvedValueOnce(makeLlmResponse(FIRST_PASS))
+      .mockResolvedValueOnce(makeCritiqueResponse({
+        approved: false,
+        corrected_fields: { score: "high", why_now: "Fixed language" },
+        critique_notes: ["malformed score should not zero a valid first pass"],
+      }));
+
+    const result = await analyzeArticle("text", null);
+    expect(result.score).toBe(75); // never zeroed to 0 by normalize
+    expect(result.why_now).toBe("Fixed language"); // valid corrections still apply
   });
 });

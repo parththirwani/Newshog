@@ -10,13 +10,30 @@ export interface LlmAnalysis {
   velocity: StoryVelocity;
   velocity_reasoning: string;
   angles: Angle[];
-  /**
-   * How first-to-cover / differentiated this story is (0-100), grounded in the
-   * deep-research coverage signal. Absent for quick-score (no research corpus).
-   */
-  noveltyScore?: number;
+  novelty_score?: number;
   /** Whether the underlying event already happened, is ongoing, or is upcoming. */
-  eventTiming?: EventTiming;
+  event_timing?: EventTiming;
+}
+
+/** A recent source (within the resurfacing window, relative to today) touching an old story. */
+export interface RecentRelatedCoverage {
+  url: string;
+  /** Publish date of this source, ISO. */
+  date: string;
+  snippet: string;
+}
+
+/**
+ * LLM-confirmed evidence that an old story has a genuinely new development.
+ * `confirmed` is only ever true when `evidenceUrl` points at a real URL from
+ * the recentRelatedCoverage list — the confirmation step fails closed otherwise.
+ */
+export interface ResurfacingConfirmation {
+  confirmed: boolean;
+  /** Must be one of recentRelatedCoverage[].url — never fabricated. Null when !confirmed. */
+  evidenceUrl: string | null;
+  /** Publish date of the evidence source, ISO — the effective-age anchor for postprocess. Absent when !confirmed. */
+  evidenceDate?: string;
 }
 
 /** Deterministic signal from the research run: how saturated the story is. */
@@ -29,6 +46,14 @@ export interface CoverageSignal {
   latestSourceDate?: string;
   /** True when a found source predates the submitted article — it isn't the origin. */
   precedesSubmittedArticle: boolean;
+  /**
+   * Recent coverage of an old (staleness-eligible) story, deep-research only.
+   * Distinct from externalSourceCount/earliest/latest — never repurposes them.
+   * Absent for every other path.
+   */
+  recentRelatedCoverage?: RecentRelatedCoverage[];
+  /** LLM confirmation of a genuine resurfacing. Deep-research + old-article only. */
+  resurfacing?: ResurfacingConfirmation;
 }
 
 export type AnalysisStatus =

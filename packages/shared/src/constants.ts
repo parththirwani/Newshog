@@ -48,3 +48,32 @@ export function saturationPenalty(externalSourceCount: number): number {
   const i = Math.min(Math.max(0, Math.floor(externalSourceCount)), SATURATION_PENALTIES.length - 1);
   return SATURATION_PENALTIES[i] ?? 0;
 }
+
+// Age beyond which a story can never be "breaking" — deterministic floor,
+// independent of the LLM/critique passes. See applyGrounding in the worker.
+export const STALE_DAYS = 90;
+
+/**
+ * Age score penalty, keyed by how many days ago the article was published.
+ * Same deterministic postprocess pattern as SATURATION_PENALTIES: applied in
+ * code, never seen or set by the model, tunable without re-prompting.
+ *
+ * Buckets are explicitly tiered rather than a flat >90 cliff: a 91-day-old
+ * story might legitimately have a fresh resurfacing hook (worth a modest
+ * penalty), while an 11-year-old one (e.g. the Whetlab reference case) almost
+ * never does and needs a real floor. Deliberate — if someone collapses these
+ * buckets in a refactor, that "old vs ancient" distinction is the intent to
+ * preserve, not just arithmetically, but because magnitudes differ by an order
+ * of magnitude.
+ */
+const AGE_PENALTIES: Array<{ maxDays: number; penalty: number }> = [
+  { maxDays: 7, penalty: 0 },    // current/breaking-eligible
+  { maxDays: 30, penalty: 5 },   // standard cycle
+  { maxDays: 90, penalty: 10 },  // late standard / approaching stale
+  { maxDays: 365, penalty: 25 }, // old — needs a concrete resurfacing hook
+  { maxDays: Infinity, penalty: 40 }, // ancient — real floor (Whetlab class)
+];
+export function agePenalty(daysOld: number): number {
+  if (!Number.isFinite(daysOld) || daysOld <= 0) return 0;
+  return AGE_PENALTIES.find((b) => daysOld <= b.maxDays)?.penalty ?? 0;
+}

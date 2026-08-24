@@ -103,7 +103,7 @@ export default async function AnalysisPage({
     const run = full.researchRunId && (owner || contextFree)
       ? await prisma.deepResearchRun.findUnique({ where: { runId: full.researchRunId } })
       : null;
-    return <ResultView id={id} owner={owner} user={user} initial={full} initialResearch={researchRunRow(run as never)} />;
+    return <ResultView id={id} owner={owner} user={user} initial={{ ...full, coverageSignal: full.coverageSignal as import("@newshog/shared").CoverageSignal | null }} initialResearch={researchRunRow(run as never)} />;
   }
 
   return <ResultView id={id} owner={owner} user={user} />;

@@ -14,6 +14,8 @@ export {
   ANALYSIS_DEDUPE_HOURS,
   SATURATION_THRESHOLD,
   saturationPenalty,
+  STALE_DAYS,
+  agePenalty,
 } from "./constants";
 export type {
   Angle,
@@ -23,6 +25,8 @@ export type {
   StoryVelocity,
   EventTiming,
   CoverageSignal,
+  RecentRelatedCoverage,
+  ResurfacingConfirmation,
   ProfileType,
   ExpertiseSummary,
   CompanyContext,

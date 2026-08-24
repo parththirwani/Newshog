@@ -269,6 +269,13 @@ export default function Home() {
           <p className="text-xs text-muted-foreground">{result.error || "Something went wrong."}</p>
         </div>
       )}
+
+      {!loading && result?.status === "analyzed" && result.score == null && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-2xl border border-border bg-card px-6 py-4 elevate">
+          <p className="text-sm font-medium">This run finished without a score</p>
+          <p className="text-xs text-muted-foreground">Try analyzing it again to get a result.</p>
+        </div>
+      )}
     </div>
   );
 }
