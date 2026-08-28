@@ -1,5 +1,6 @@
 import { PrismaClient } from "../generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+export { UsageKind } from "../generated/prisma/enums";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 

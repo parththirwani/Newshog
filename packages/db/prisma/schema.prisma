@@ -7,6 +7,11 @@ datasource db {
   provider = "postgresql"
 }
 
+enum UsageKind {
+  quick_search
+  deep_research
+}
+
 enum AnalysisStatus {
   queued
   scraping
@@ -54,8 +59,22 @@ model User {
   lastLoginAt DateTime? @map("last_login_at")
   tier        String    @default("free")
 
-  profiles Profile[]
-  analyses Analysis[]
+  // Stripe billing state. tier/stripe_* are driven ONLY by the billing
+  // webhook (checkout.session.completed / customer.subscription.updated /
+  // customer.subscription.deleted) — there is no client-settable field.
+  // Cancellation semantics: tier flips back to "free" on
+  // customer.subscription.deleted (which Stripe fires at the actual
+  // cancellation moment, honoring cancel-at-period-end where set in the
+  // billing portal). invoice.payment_failed does NOT downgrade — Stripe
+  // dunning retries for a grace period; only a real cancel reverts tier.
+  stripeCustomerId          String?   @unique @map("stripe_customer_id")
+  stripeSubscriptionId      String?   @unique @map("stripe_subscription_id")
+  stripeCurrentPeriodStart  DateTime? @map("stripe_current_period_start")
+  stripeCurrentPeriodEnd    DateTime? @map("stripe_current_period_end")
+
+  profiles      Profile[]
+  analyses      Analysis[]
+  usageCounters UsageCounter[]
 
   @@map("users")
 }
@@ -210,6 +229,48 @@ model Event {
 
   @@index([name])
   @@map("events")
+}
+
+// ── Usage quotas ──────────────────────────────────────────────
+// Two independent counters per identity, one per usage kind. Quick search and
+// deep research never share a bucket. Anonymous usage is tracked SEPARATELY (no
+// user row) via AnonymousUsage; logged-in users (free/pro) via UsageCounter.
+
+// ponytail: anonymous counters are intentionally lifetime-only, no period
+// column. Anon limits are flat (3 quick lifetime, 0 deep) so a period is dead
+// weight. Ceiling: a "weekly anon refresh" tier would need period_start/end +
+// a unique tweak here — a contained migration, not a redesign.
+model AnonymousUsage {
+  id        String    @id @default(cuid())
+  anonId    String    @map("anon_id")
+  kind      UsageKind
+  count     Int       @default(0)
+  firstSeen DateTime  @default(now()) @map("first_seen")
+  lastSeen  DateTime  @default(now()) @map("last_seen")
+
+  @@unique([anonId, kind])
+  @@map("anonymous_usage")
+}
+
+// Logged-in usage. period_start/period_end are the daily UTC boundary for the
+// free tier and the Stripe billing cycle for pro. Rows are created lazily on
+// first hit in a period; consumption is a single atomic upsert keyed on
+// (user_id, kind, period_start) with a count < limit guard — no transaction,
+// no SELECT ... FOR UPDATE, no race window.
+model UsageCounter {
+  id          String    @id @default(cuid())
+  userId      String    @map("user_id")
+  kind        UsageKind
+  periodStart DateTime  @map("period_start")
+  periodEnd   DateTime  @map("period_end")
+  count       Int       @default(0)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, kind, periodStart])
+  @@map("usage_counters")
 }
 
 // ── Deep Research ─────────────────────────────────────────────
