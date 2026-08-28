@@ -2,19 +2,15 @@ import { NextResponse } from "next/server";
 import { prisma } from "@newshog/db";
 import { DEEP_RESEARCH_QUEUE, getDeepResearchQueue } from "@newshog/queue";
 import { validateClarificationAnswers } from "@newshog/deep-research";
-import { requireProUser } from "@/lib/pro-gate";
+import { requireQuotaUser } from "@/lib/pro-gate";
 
 export async function POST(request: Request) {
   // Deep Research spends real LLM + network budget (search/scrape), so it's
-  // gated even on the standalone tool routes — not just /api/analyze/deep.
-  const gate = await requireProUser();
-  if (!gate.ok) return gate.response;
-
-  // Ownership anchor for DeepResearchRun: standalone runs belong to the
-  // creating user, so the run-level endpoints ([runId] read/cancel, events)
-  // can scope access to that user instead of any caller who knows the id.
-  const userId = gate.user.id;
-
+  // quota-gated even on the standalone tool routes — not just /api/analyze/deep.
+  // The consuming check runs after the cheap field validation (below) so a
+  // malformed request doesn't burn a run from the user's ceiling, but before
+  // any prepare-session write, run creation, or enqueue — a denied request
+  // never consumes a clarification prepare_session or enqueues a job.
   try {
     const body = await request.json();
     const {
@@ -50,6 +46,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "mode must be answer or report." }, { status: 400 });
     }
 
+    // Ownership anchor for DeepResearchRun: standalone runs belong to the
+    // creating user, so the run-level endpoints ([runId] read/cancel, events)
+    // can scope access to that user instead of any caller who knows the id.
+    // NOT gated here — the consuming quota check sits AFTER the clarification
+    // session is validated, so a 400 (missing/replayed prepare session, bad
+    // answers) never burns a run from the caller's ceiling.
+
     // Mandatory clarification. Unless the caller explicitly opts out, the run
     // must reference a persisted prepare session that has not been replayed.
     let createdRunId: string;
@@ -77,6 +80,13 @@ export async function POST(request: Request) {
           { status: 400 },
         );
       }
+
+      // Consume quota now: every earlier 400 path has already returned, so a
+      // denial here never burns a run and an allowance is never wasted on a
+      // request that was going to be rejected.
+      const gate = await requireQuotaUser("deep_research");
+      if (!gate.ok) return gate.response;
+      const userId = gate.user.id;
 
       // Persist the answers to the session so the worker folds them into the
       // research context.
@@ -118,6 +128,12 @@ export async function POST(request: Request) {
       // Mark the session consumed so it cannot be replayed onto another run.
       await prisma.deepResearchSession.update({ where: { id: prepareSessionId }, data: { used: true } });
     } else {
+      // Skip-clarification path still consumes quota — deny before creating
+      // the run so a rejected request never leaves an orphaned queued run.
+      const gate = await requireQuotaUser("deep_research");
+      if (!gate.ok) return gate.response;
+      const userId = gate.user.id;
+
       const run = await prisma.deepResearchRun.create({
         data: {
           runId: crypto.randomUUID(),

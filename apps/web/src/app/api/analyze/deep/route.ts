@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@newshog/db";
 import { getAnalyzeQueue } from "@newshog/queue";
-import { getSessionUser } from "@/lib/auth";
-import { isProUser, proDeniedResponse } from "@/lib/pro-gate";
+import { requireQuotaUser } from "@/lib/pro-gate";
 
 function isValidUrl(raw: string): boolean {
   try {
@@ -15,22 +14,20 @@ function isValidUrl(raw: string): boolean {
 
 export async function POST(request: Request) {
   try {
-    // Deep Research is pro-gated at the API layer. When ENABLE_PRO_GATING is
-    // unset (dev/test) everyone passes; otherwise only tier='pro' succeeds.
-    const user = await getSessionUser();
-    if (!isProUser(user)) return proDeniedResponse();
-
     const body = await request.json();
     const { url } = body as { url?: string };
     if (!url || typeof url !== "string" || !isValidUrl(url)) {
       return NextResponse.json({ error: "Invalid URL. Provide a valid http(s) URL." }, { status: 400 });
     }
 
-    if (!user) {
-      // Practically unreachable (pro gate passes anonymous only when gating is
-      // off) but keep the job owned consistently.
-      return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
-    }
+    // Deep Research spends real LLM + network budget, so the deep_research
+    // quota is enforced here before anything is enqueued. Anonymous callers
+    // get a 401 (deep research requires an account); users past their
+    // daily/monthly limit get a 429 with the reset time. When
+    // ENABLE_PRO_GATING is off (dev/test), the check passes without consuming.
+    const gate = await requireQuotaUser("deep_research");
+    if (!gate.ok) return gate.response;
+    const user = gate.user;
 
     const analysis = await prisma.analysis.create({
       data: {

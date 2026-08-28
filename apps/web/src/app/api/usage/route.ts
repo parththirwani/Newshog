@@ -1,23 +1,53 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@newshog/db";
 import { getSessionUser, getAnonId } from "@/lib/auth";
-import { anonQuota, ANON_FREE_LIMIT } from "@/lib/rate-limit";
+import { getQuotaStatus } from "@/lib/usage";
 
 export async function GET() {
   const user = await getSessionUser();
+
   if (user) {
-    return NextResponse.json({ signedIn: true, email: user.email, used: null, remaining: null });
+    const [quickSearch, deepResearch] = await Promise.all([
+      getQuotaStatus({ userId: user.id }, "quick_search"),
+      getQuotaStatus({ userId: user.id }, "deep_research"),
+    ]);
+    return NextResponse.json({
+      signedIn: true,
+      email: user.email,
+      tier: quickSearch.tier,
+      pro: quickSearch.tier === "pro",
+      quickSearch: {
+        used: quickSearch.used,
+        limit: quickSearch.limit,
+        resetsAt: quickSearch.resetsAt,
+      },
+      deepResearch: {
+        used: deepResearch.used,
+        limit: deepResearch.limit,
+        resetsAt: deepResearch.resetsAt,
+      },
+    });
   }
 
-  const { id, cookie } = await getAnonId();
-  const used = await prisma.analysis.count({ where: { anonId: id } });
-  const quota = anonQuota(used);
+  const anon = await getAnonId();
+  const [quickSearch, deepResearch] = await Promise.all([
+    getQuotaStatus({ anonId: anon.id }, "quick_search"),
+    getQuotaStatus({ anonId: anon.id }, "deep_research"),
+  ]);
   const res = NextResponse.json({
     signedIn: false,
-    used,
-    remaining: quota.ok ? quota.remaining : 0,
-    freeLimit: ANON_FREE_LIMIT,
+    tier: "anonymous",
+    pro: false,
+    quickSearch: {
+      used: quickSearch.used,
+      limit: quickSearch.limit,
+      resetsAt: null,
+    },
+    deepResearch: {
+      used: deepResearch.used,
+      limit: deepResearch.limit,
+      resetsAt: null,
+    },
   });
-  if (cookie) res.cookies.set(cookie);
+  if (anon.cookie) res.cookies.set(anon.cookie);
   return res;
 }

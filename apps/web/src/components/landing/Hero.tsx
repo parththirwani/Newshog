@@ -3,17 +3,16 @@
 import { useEffect, useState } from "react";
 import { ScoreCard } from "./ScoreCard";
 import { UrlInput, type AnalyzeMode } from "./UrlInput";
+import type { UpsellKind, UpsellTier } from "@/components/app/UpsellModal";
 
 const rotating = ["worth a pitch", "already crowded", "dead by noon", "your whole week"];
 
 export function Hero({
   onAnalyze,
-  pro = false,
   onUpgrade,
 }: {
   onAnalyze?: (url: string, mode: AnalyzeMode) => void;
-  pro?: boolean;
-  onUpgrade?: () => void;
+  onUpgrade?: (kind: UpsellKind, tier: UpsellTier) => void;
 }) {
   const [i, setI] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -67,7 +66,7 @@ export function Hero({
             angles, and drafts a pitch a journalist would actually open. About thirty seconds.
           </p>
 
-          <UrlInput className="mt-8 max-w-xl" onAnalyze={onAnalyze} pro={pro} onUpgrade={onUpgrade} />
+          <UrlInput className="mt-8 max-w-xl" onAnalyze={onAnalyze} onUpgrade={onUpgrade} />
 
           <div className="mt-10 flex flex-wrap items-center gap-x-8 gap-y-4">
             {[

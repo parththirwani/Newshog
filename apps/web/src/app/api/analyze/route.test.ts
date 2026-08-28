@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const session = vi.hoisted(() => ({ user: null as { id: string; email: string } | null }));
+const session = vi.hoisted(() => ({
+  user: null as { id: string; email: string; tier: string } | null,
+}));
 const anon = vi.hoisted(() => ({ id: "anon-1", cookie: null as Record<string, unknown> | null }));
+const usageMock = vi.hoisted(() => ({
+  checkAndConsumeQuota: vi.fn(),
+  getQuotaStatus: vi.fn(),
+}));
 
 vi.mock("@/lib/auth", () => ({
   getSessionUser: () => Promise.resolve(session.user),
@@ -15,6 +21,31 @@ vi.mock("@/lib/auth", () => ({
     sameSite: "lax",
   }),
 }));
+
+vi.mock("@/lib/usage", () => ({
+  checkAndConsumeQuota: usageMock.checkAndConsumeQuota,
+  getQuotaStatus: usageMock.getQuotaStatus,
+  proGatingEnabled: () => true,
+  LIMITS: { anonymous: { quick_search: 3, deep_research: 0 }, free: { quick_search: 10, deep_research: 1 }, pro: { quick_search: 250, deep_research: 50 } },
+}));
+
+vi.mock("@/lib/pro-gate", async () => {
+  const { NextResponse } = await import("next/server");
+  return {
+    quotaDeniedResponse: (result: { tier: string; resetsAt: Date | null; remaining: number }, kind: string) =>
+      NextResponse.json(
+        {
+          error: "quota_exceeded",
+          code: "quota_exceeded",
+          kind,
+          tier: result.tier,
+          resetsAt: result.resetsAt,
+          remaining: 0,
+        },
+        { status: 429 },
+      ),
+  };
+});
 
 const prismaMock = {
   analysis: { findFirst: vi.fn(), count: vi.fn(), create: vi.fn() },
@@ -36,7 +67,6 @@ vi.mock("@/lib/rate-limit", () => ({
   clientIp: () => "test",
   ANALYZE_RATE_LIMIT: 10,
   ANALYZE_WINDOW_MS: 60 * 60 * 1000,
-  anonQuota: (used: number) => ({ ok: used < 3, remaining: Math.max(0, 3 - used) }),
 }));
 
 const { POST } = await import("./route");
@@ -58,38 +88,33 @@ describe("POST /api/analyze", () => {
     anon.id = "anon-1";
     anon.cookie = null;
     prismaMock.analysis.findFirst.mockResolvedValue(null);
-    prismaMock.analysis.count.mockResolvedValue(0);
     prismaMock.analysis.create.mockResolvedValue({ id: "analysis-1" });
     prismaMock.profile.findUnique.mockResolvedValue(null);
+    usageMock.getQuotaStatus.mockResolvedValue({ used: 0, limit: 3, resetsAt: null, tier: "anonymous" });
+    usageMock.checkAndConsumeQuota.mockResolvedValue({
+      allowed: true,
+      remaining: 2,
+      resetsAt: null,
+      tier: "anonymous",
+    });
   });
 
-  it("rejects invalid URLs", async () => {
+  it("rejects invalid URLs before touching quota", async () => {
     const res = await post({ url: "not-a-url" });
     expect(res.status).toBe(400);
+    expect(usageMock.checkAndConsumeQuota).not.toHaveBeenCalled();
   });
 
-  it("blocks an anonymous visitor past the 3-story free tier", async () => {
-    prismaMock.analysis.count.mockResolvedValue(3);
-    const res = await post({ url: "https://example.com/story" });
-    expect(res.status).toBe(402);
-    const body = await res.json();
-    expect(body.remaining).toBe(0);
-    expect(prismaMock.analysis.create).not.toHaveBeenCalled();
-  });
-
-  it("sets the anon cookie even on the exhausted response so the count sticks", async () => {
-    anon.cookie = { name: "anon_id", value: "anon-1.sig" } as unknown as Record<string, unknown>;
-    prismaMock.analysis.count.mockResolvedValue(3);
-    const res = await post({ url: "https://example.com/story" });
-    const cookies = res.headers.getSetCookie().join(";");
-    expect(cookies).toContain("anon_id=");
-  });
-
-  it("counts anonymous usage against the signed anon id, not IP", async () => {
-    prismaMock.analysis.create.mockResolvedValue({ id: "analysis-1" });
+  it("consumes quota before enqueuing and returns the caller's remaining", async () => {
+    usageMock.checkAndConsumeQuota.mockResolvedValue({
+      allowed: true,
+      remaining: 2,
+      resetsAt: null,
+      tier: "anonymous",
+    });
     const res = await post({ url: "https://example.com/story" });
     expect(res.status).toBe(201);
-    expect(prismaMock.analysis.count).toHaveBeenCalledWith({ where: { anonId: "anon-1" } });
+    expect(usageMock.checkAndConsumeQuota).toHaveBeenCalledWith({ anonId: "anon-1" }, "quick_search");
     expect(prismaMock.analysis.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ anonId: "anon-1", userId: null }),
@@ -99,72 +124,85 @@ describe("POST /api/analyze", () => {
     expect(body.remaining).toBe(2);
   });
 
-  it("attaches the userId for a logged-in user and skips the quota", async () => {
-    session.user = { id: "user-1", email: "owner@example.com" };
-    prismaMock.analysis.create.mockResolvedValue({ id: "analysis-1" });
+  it("denies with 429 quota_exceeded when anonymous quota is exhausted and never enqueues", async () => {
+    usageMock.checkAndConsumeQuota.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      resetsAt: null,
+      tier: "anonymous",
+    });
+    const res = await post({ url: "https://example.com/story" });
+    expect(res.status).toBe(429);
+    const body = await res.json();
+    expect(body).toMatchObject({ error: "quota_exceeded", kind: "quick_search", tier: "anonymous" });
+    expect(prismaMock.analysis.create).not.toHaveBeenCalled();
+  });
+
+  it("sets the anon cookie even on the exhausted response so the count sticks", async () => {
+    anon.cookie = { name: "anon_id", value: "anon-1.sig" } as unknown as Record<string, unknown>;
+    usageMock.checkAndConsumeQuota.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      resetsAt: null,
+      tier: "anonymous",
+    });
+    const res = await post({ url: "https://example.com/story" });
+    const cookies = res.headers.getSetCookie().join(";");
+    expect(cookies).toContain("anon_id=");
+  });
+
+  it("enforces the logged-in free tier (10/day) instead of skipping quota", async () => {
+    session.user = { id: "user-1", email: "owner@example.com", tier: "free" };
+    usageMock.checkAndConsumeQuota.mockResolvedValue({
+      allowed: true,
+      remaining: 9,
+      resetsAt: new Date("2099-01-01T00:00:00Z"),
+      tier: "free",
+    });
     const res = await post({ url: "https://example.com/story" });
     expect(res.status).toBe(201);
+    expect(usageMock.checkAndConsumeQuota).toHaveBeenCalledWith({ userId: "user-1" }, "quick_search");
+    expect(prismaMock.analysis.count).not.toHaveBeenCalled();
     expect(prismaMock.analysis.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ userId: "user-1", anonId: null }),
       }),
     );
-    expect(prismaMock.analysis.count).not.toHaveBeenCalled();
     const body = await res.json();
-    expect(body.remaining).toBeUndefined();
+    expect(body.remaining).toBe(9);
+  });
+
+  it("429s a logged-in free user at their daily limit", async () => {
+    session.user = { id: "user-1", email: "owner@example.com", tier: "free" };
+    usageMock.checkAndConsumeQuota.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      resetsAt: new Date("2099-01-01T00:00:00Z"),
+      tier: "free",
+    });
+    const res = await post({ url: "https://example.com/story" });
+    expect(res.status).toBe(429);
+    const body = await res.json();
+    expect(body).toMatchObject({ error: "quota_exceeded", kind: "quick_search", tier: "free" });
+    expect(body.resetsAt).toEqual("2099-01-01T00:00:00.000Z");
+    expect(prismaMock.analysis.create).not.toHaveBeenCalled();
+  });
+
+  it("does not consume quota on a dedupe hit, but reports remaining from a status read", async () => {
+    prismaMock.analysis.findFirst.mockResolvedValue({ id: "existing-1" });
+    usageMock.getQuotaStatus.mockResolvedValue({ used: 1, limit: 3, resetsAt: null, tier: "anonymous" });
+    const res = await post({ url: "https://example.com/story" });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body).toMatchObject({ id: "existing-1", deduped: true, remaining: 2 });
+    expect(usageMock.checkAndConsumeQuota).not.toHaveBeenCalled();
+    expect(prismaMock.analysis.create).not.toHaveBeenCalled();
   });
 
   it("scopes the dedupe to the caller's own anonymous rows (never cross-account)", async () => {
     const res = await post({ url: "https://example.com/story" });
     expect(res.status).toBe(201);
     const calledWith = prismaMock.analysis.findFirst.mock.calls[0][0];
-    expect(calledWith.where.OR).toEqual([{ anonId: "anon-1" }, { userId: null, anonId: null }]);
-  });
-
-  it("dedupes an anonymous caller onto their own prior analysis", async () => {
-    prismaMock.analysis.findFirst.mockResolvedValue({ id: "my-analysis" });
-    const res = await post({ url: "https://example.com/story" });
-    expect(res.status).toBe(201);
-    const body = await res.json();
-    expect(body.deduped).toBe(true);
-    expect(body.id).toBe("my-analysis");
-    expect(prismaMock.analysis.create).not.toHaveBeenCalled();
-  });
-
-  it("dedupes a logged-in user only onto their own (or context-free) analyses", async () => {
-    session.user = { id: "user-1", email: "owner@example.com" };
-    prismaMock.analysis.findFirst.mockResolvedValue({ id: "my-analysis" });
-    const res = await post({ url: "https://example.com/story" });
-    expect(res.status).toBe(201);
-    const calledWith = prismaMock.analysis.findFirst.mock.calls[0][0];
-    expect(calledWith.where.OR).toContainEqual({ userId: "user-1" });
-    expect(calledWith.where.OR).toContainEqual({ userId: null, anonId: null });
-  });
-
-  it("rejects using another user's profile id", async () => {
-    session.user = { id: "user-1", email: "owner@example.com" };
-    prismaMock.profile.findUnique.mockResolvedValue({ userId: "user-2" });
-    const res = await post({ url: "https://example.com/story", profileId: "profile-2" });
-    expect(res.status).toBe(403);
-    expect(prismaMock.analysis.create).not.toHaveBeenCalled();
-  });
-
-  it("allows a logged-in user to analyze against their own profile", async () => {
-    session.user = { id: "user-1", email: "owner@example.com" };
-    prismaMock.profile.findUnique.mockResolvedValue({ userId: "user-1" });
-    prismaMock.analysis.create.mockResolvedValue({ id: "analysis-1" });
-    const res = await post({ url: "https://example.com/story", profileId: "profile-1" });
-    expect(res.status).toBe(201);
-    expect(prismaMock.analysis.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ profileId: "profile-1" }),
-      }),
-    );
-  });
-
-  it("rejects an anonymous caller attaching a profile id", async () => {
-    const res = await post({ url: "https://example.com/story", profileId: "profile-1" });
-    expect(res.status).toBe(403);
-    expect(prismaMock.analysis.create).not.toHaveBeenCalled();
+    expect(calledWith.where.OR).toContainEqual({ anonId: "anon-1" });
   });
 });

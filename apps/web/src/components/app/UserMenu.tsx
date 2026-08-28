@@ -3,9 +3,9 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LogOut, User } from "lucide-react";
+import { CreditCard, LogOut, User } from "lucide-react";
 
-export function UserMenu({ user }: { user: { email: string } }) {
+export function UserMenu({ user }: { user: { email: string; tier?: string } }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -23,12 +23,24 @@ export function UserMenu({ user }: { user: { email: string } }) {
     router.push("/");
   }
 
+  async function billing(target: "checkout" | "portal") {
+    try {
+      const res = await fetch(`/api/billing/${target}`, { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.url) window.location.assign(data.url);
+    } catch {
+      // Keep the menu open; the user can retry.
+    }
+  }
+
+  const isPro = user.tier === "pro";
   const initial = user.email.charAt(0).toUpperCase();
 
   return (
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
+        aria-label="Account menu"
         className="flex size-8 cursor-pointer items-center justify-center rounded-full bg-accent-strong text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
       >
         {initial}
@@ -46,6 +58,13 @@ export function UserMenu({ user }: { user: { email: string } }) {
             <User className="size-4" />
             Profile
           </Link>
+          <button
+            onClick={() => billing(isPro ? "portal" : "checkout")}
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-foreground transition-colors hover:bg-secondary"
+          >
+            <CreditCard className="size-4" />
+            {isPro ? "Manage plan" : "Upgrade to Pro"}
+          </button>
           <button
             onClick={handleLogout}
             className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-foreground transition-colors hover:bg-secondary"

@@ -6,9 +6,10 @@ import {
   clientIp,
   ANALYZE_RATE_LIMIT,
   ANALYZE_WINDOW_MS,
-  anonQuota,
 } from "@/lib/rate-limit";
 import { getSessionUser, getAnonId, anonIdCookie } from "@/lib/auth";
+import { checkAndConsumeQuota, getQuotaStatus } from "@/lib/usage";
+import { quotaDeniedResponse } from "@/lib/pro-gate";
 import { trackServer } from "@/lib/analytics";
 import { normalizeUrl } from "@/lib/url";
 import { ANALYSIS_DEDUPE_HOURS } from "@newshog/shared";
@@ -50,9 +51,10 @@ export async function POST(request: Request) {
     const normalizedUrl = normalizeUrl(url);
 
     // Free tier: anonymous visitors get 3 analyses tracked by a signed
-    // httpOnly anon_id cookie; logged-in users are unlimited. Clearing the
-    // cookie resets the count — an accepted free-growth-gate tradeoff, not a
-    // hard paywall.
+    // httpOnly anon_id cookie; logged-in free users get 10/day, pro 250/mo —
+    // enforced atomically by checkAndConsumeQuota (the table was picked over
+    // the old count()-based gate so limits survive Redis eviction and give
+    // every tier an honest, specific reset time).
     const session = await getSessionUser();
     const anon = session ? null : await getAnonId();
     const anonId = anon?.id ?? null;
@@ -72,12 +74,6 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Forbidden." }, { status: 403 });
       }
     }
-
-    // ponytail: count()-based quota, no anonymous_usage table — saving a
-    // second write path. If anon analysis history (beyond a counter) is ever
-    // needed, add the table then.
-    const used = anonId ? await prisma.analysis.count({ where: { anonId } }) : null;
-    const remaining = used == null ? undefined : Math.max(0, anonQuota(used).remaining - 1);
 
     // Dedupe: don't re-run the expensive pipeline for a URL already analyzed
     // in the window. Only the caller's own rows (or fully context-free rows,
@@ -100,19 +96,33 @@ export async function POST(request: Request) {
       select: { id: true },
     });
     if (recent) {
+      // A dedupe hit reuses the existing result and does NOT consume quota —
+      // it would be unfair to count a repeat paste against the daily/monthly
+      // ceiling. Report the caller's remaining without consuming.
+      let remaining: number | undefined;
+      if (anonId) {
+        const s = await getQuotaStatus({ anonId }, "quick_search");
+        remaining = Math.max(0, s.limit - s.used);
+      }
       trackServer("url_deduped", { profileId: profileId ?? null });
       return withAnonCookie(NextResponse.json({ id: recent.id, deduped: true, remaining }, { status: 201 }), anonCookie);
     }
 
-    if (used != null && !anonQuota(used).ok) {
-      trackServer("free_tier_exhausted", { anonId });
-      return withAnonCookie(
-        NextResponse.json(
-          { error: "You've used your 3 free stories. Sign in to keep analyzing.", remaining: 0 },
-          { status: 402 },
-        ),
-        anonCookie,
-      );
+    // Enforce + consume the tier quota before any LLM cost or job enqueue.
+    // Anonymous → anonymous_usage (lifetime 3); logged-in → usage_counters.
+    // Degenerate callers who mint a fresh anon cookie per request bypass the
+    // cap — an accepted free-growth-gate tradeoff (same category as the Phase
+    // 10 "clearing cookies resets the count" call), not a hard paywall.
+    const quota = session
+      ? await checkAndConsumeQuota({ userId: session.id }, "quick_search")
+      : anonId
+        ? await checkAndConsumeQuota({ anonId }, "quick_search")
+        : { allowed: false, remaining: 0, resetsAt: null, tier: "anonymous" as const };
+
+    if (!quota.allowed) {
+      trackServer("free_tier_exhausted", { anonId, userId: session?.id ?? null });
+      const res = quotaDeniedResponse(quota, "quick_search");
+      return withAnonCookie(res, anonCookie);
     }
 
     const analysis = await prisma.analysis.create({
@@ -140,7 +150,7 @@ export async function POST(request: Request) {
 
     trackServer("url_pasted", { profileId: profileId ?? null });
 
-    return withAnonCookie(NextResponse.json({ id: analysis.id, remaining }, { status: 201 }), anonCookie);
+    return withAnonCookie(NextResponse.json({ id: analysis.id, remaining: quota.remaining }, { status: 201 }), anonCookie);
   } catch (err) {
     console.error("[api/analyze] POST error:", err);
     return NextResponse.json({ error: "Internal server error." }, { status: 500 });

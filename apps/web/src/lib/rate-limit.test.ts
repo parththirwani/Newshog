@@ -1,12 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import {
-  rateLimit,
-  clientIp,
-  ANALYZE_RATE_LIMIT,
-  ANALYZE_WINDOW_MS,
-  ANON_FREE_LIMIT,
-  anonQuota,
-} from "./rate-limit";
+import { rateLimit, clientIp, ANALYZE_RATE_LIMIT, ANALYZE_WINDOW_MS } from "./rate-limit";
 
 describe("rateLimit", () => {
   beforeEach(() => {
@@ -45,22 +38,6 @@ describe("rateLimit", () => {
   it("exposes the default analyze limits", () => {
     expect(ANALYZE_RATE_LIMIT).toBe(10);
     expect(ANALYZE_WINDOW_MS).toBe(60 * 60 * 1000);
-  });
-});
-
-describe("anonQuota", () => {
-  it("allows the free tier up to the cap", () => {
-    expect(ANON_FREE_LIMIT).toBe(3);
-    for (let used = 0; used < ANON_FREE_LIMIT; used++) {
-      expect(anonQuota(used).ok).toBe(true);
-    }
-  });
-
-  it("blocks once the cap is reached", () => {
-    const used = ANON_FREE_LIMIT;
-    expect(anonQuota(used).ok).toBe(false);
-    expect(anonQuota(used).remaining).toBe(0);
-    expect(anonQuota(used + 5).ok).toBe(false);
   });
 });
 

@@ -3,33 +3,46 @@
 import { useState, useEffect, useRef, useCallback, type FormEvent } from "react";
 import { ArrowRight, Link2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { UpsellKind, UpsellTier } from "@/components/app/UpsellModal";
 
 export type AnalyzeMode = "quick" | "deep";
+export type { UpsellKind, UpsellTier };
+
+interface KindUsage {
+  used: number;
+  limit: number;
+  resetsAt: string | null;
+}
+
+interface UsageState {
+  signedIn: boolean;
+  tier: UpsellTier;
+  quickSearch: KindUsage;
+  deepResearch: KindUsage;
+}
 
 export function UrlInput({
   size = "lg",
   className,
   onAnalyze,
-  pro = false,
   onUpgrade,
 }: {
   size?: "lg" | "md";
   className?: string;
   onAnalyze?: (url: string, mode: AnalyzeMode) => void | Promise<void>;
-  pro?: boolean;
-  onUpgrade?: () => void;
+  onUpgrade?: (kind: UpsellKind, tier: UpsellTier) => void;
 }) {
   const [url, setUrl] = useState("");
   const [mode, setMode] = useState<AnalyzeMode>("quick");
   const [state, setState] = useState<"idle" | "working" | "done">("idle");
-  const [remaining, setRemaining] = useState<number | null>(null);
+  const [usage, setUsage] = useState<UsageState | null>(null);
   const timeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const refreshUsage = useCallback(() => {
     fetch("/api/usage")
       .then((r) => r.json())
       .then((d) => {
-        if (d && !d.signedIn && typeof d.remaining === "number") setRemaining(d.remaining);
+        if (d && d.quickSearch) setUsage(d as UsageState);
       })
       .catch(() => {});
   }, []);
@@ -44,13 +57,23 @@ export function UrlInput({
     };
   }, []);
 
+  const quickRemaining = usage ? Math.max(0, usage.quickSearch.limit - usage.quickSearch.used) : null;
+  const deepRemaining = usage ? Math.max(0, usage.deepResearch.limit - usage.deepResearch.used) : null;
+  // While /api/usage hasn't resolved, do NOT block from the client — the
+  // server-side check is authoritative and will 429 (or pass) correctly.
+  // Blocking early here would show a false upsell to a pro/free user who
+  // still has quota, just because the fetch hadn't landed yet.
+  const usageLoaded = usage !== null;
+  const canDeep = !usageLoaded || deepRemaining === null || deepRemaining > 0;
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!url.trim() || state === "working") return;
-    // Deep Research is pro-gated: non-pro users get the upgrade prompt, never
-    // an unscoped backend call.
-    if (mode === "deep" && !pro) {
-      onUpgrade?.();
+    // Gate deep research client-side by the caller's actual quota: anonymous
+    // has zero, free has 1/day, pro has 50/cycle. Users with quota left go
+    // straight through; users at/over the limit get the honest upsell.
+    if (mode === "deep" && !canDeep) {
+      onUpgrade?.("deep_research", usage?.tier ?? "anonymous");
       return;
     }
     setState("working");
@@ -69,6 +92,39 @@ export function UrlInput({
 
   const workingLabel = mode === "deep" ? "Researching" : "Scoring";
   const idleLabel = mode === "deep" ? "Deep research" : "Score it";
+
+  let helper =
+    "Paste a URL and get a newsworthiness score in seconds";
+  if (mode === "deep") {
+    if (usage && canDeep) {
+      helper = `Grounded in live research across recent coverage — takes longer than a quick score (${deepRemaining} ${deepRemaining === 1 ? "run" : "runs"} left this ${
+        usage.tier === "pro" ? "cycle" : "day"
+      })`;
+    } else if (usage?.signedIn) {
+      helper =
+        usage.deepResearch.limit > 0
+          ? "Today's deep research used — it resets at UTC midnight · Pro gets 50/week-monthly"
+          : "Deep research is a Pro feature — upgrade to run it";
+    } else {
+      helper = "Deep research needs a free account — log in for 1 run/day";
+    }
+  } else if (usage) {
+    if (usage.tier === "anonymous") {
+      const rem = quickRemaining ?? 0;
+      helper =
+        rem > 0
+          ? `${rem} ${rem === 1 ? "story" : "stories"} left free · log in to keep going`
+          : "All 3 free stories used · log in to keep analyzing";
+    } else if (usage.tier === "free") {
+      const rem = quickRemaining ?? 0;
+      helper =
+        rem > 0
+          ? `${rem} ${rem === 1 ? "quick score" : "quick scores"} left today · Pro gives you 250/mo`
+          : "Today's 10 quick scores used · Pro gives you 250/mo";
+    } else {
+      helper = `${quickRemaining ?? 0} of 250 quick scores left this cycle`;
+    }
+  }
 
   return (
     <form onSubmit={submit} className={cn("w-full", className)}>
@@ -125,11 +181,6 @@ export function UrlInput({
               <Loader2 className="size-4 animate-spin" strokeWidth={2} />
               {workingLabel}
             </>
-          ) : mode === "deep" ? (
-            <>
-              {idleLabel}
-              <ArrowRight className="size-4 transition-transform duration-200 group-focus-within:translate-x-0.5" strokeWidth={2} />
-            </>
           ) : (
             <>
               {idleLabel}
@@ -138,17 +189,7 @@ export function UrlInput({
           )}
         </button>
       </div>
-      <p className="mt-3 label-mono">
-        {mode === "deep"
-          ? pro
-            ? "Grounded in live research across recent coverage takes longer than a quick score"
-            : "Deep research is a Pro feature — upgrade to run it"
-: remaining !== null
-              ? remaining > 0
-                ? `${remaining} ${remaining === 1 ? "story" : "stories"} left free · log in to keep going`
-                : "All 3 free stories used · log in to keep analyzing"
-              : "Paste a URL and get a newsworthiness score in seconds"}
-      </p>
+      <p className="mt-3 label-mono">{helper}</p>
     </form>
   );
 }

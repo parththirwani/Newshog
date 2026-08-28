@@ -2,15 +2,14 @@
 
 import { Reveal, WordReveal } from "./Reveal";
 import { UrlInput, type AnalyzeMode } from "./UrlInput";
+import type { UpsellKind, UpsellTier } from "@/components/app/UpsellModal";
 
 export function FinalCta({
   onAnalyze,
-  pro = false,
   onUpgrade,
 }: {
   onAnalyze?: (url: string, mode: AnalyzeMode) => void;
-  pro?: boolean;
-  onUpgrade?: () => void;
+  onUpgrade?: (kind: UpsellKind, tier: UpsellTier) => void;
 }) {
   return (
     <section id="cta" className="relative isolate overflow-hidden">
@@ -31,7 +30,7 @@ export function FinalCta({
             Paste a link. Get the verdict before the news cycle moves on.
           </p>
           <Reveal delay={80}>
-            <UrlInput className="mt-9 max-w-xl" onAnalyze={onAnalyze} pro={pro} onUpgrade={onUpgrade} />
+            <UrlInput className="mt-9 max-w-xl" onAnalyze={onAnalyze} onUpgrade={onUpgrade} />
           </Reveal>
         </div>
       </div>
