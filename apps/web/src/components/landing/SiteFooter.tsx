@@ -1,5 +1,6 @@
 import Image from "next/image";
 import logo from "../../public/logo.png";
+import { ScrollLink } from "./ScrollLink";
 
 export function SiteFooter() {
   return (
@@ -17,15 +18,15 @@ export function SiteFooter() {
           <span className="label-mono ml-2">Built for people who move first</span>
         </div>
         <div className="flex gap-6 text-sm text-muted-foreground">
-          <a className="transition-colors hover:text-foreground" href="#example">
+          <ScrollLink target="example" className="transition-colors hover:text-foreground">
             Example
-          </a>
-          <a className="transition-colors hover:text-foreground" href="#how">
+          </ScrollLink>
+          <ScrollLink target="how" className="transition-colors hover:text-foreground">
             How it works
-          </a>
-          <a className="transition-colors hover:text-foreground" href="#cta">
-            Get started
-          </a>
+          </ScrollLink>
+          <ScrollLink target="pricing" className="transition-colors hover:text-foreground">
+            Pricing
+          </ScrollLink>
         </div>
       </div>
     </footer>

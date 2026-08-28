@@ -12,7 +12,7 @@ export function FinalCta({
   onUpgrade?: (kind: UpsellKind, tier: UpsellTier) => void;
 }) {
   return (
-    <section id="cta" className="relative isolate overflow-hidden">
+    <section id="cta" className="scroll-mt-20 relative isolate overflow-hidden">
       <div
         aria-hidden
         className="grid-paper pointer-events-none absolute inset-0 opacity-60 [mask-image:radial-gradient(60%_70%_at_70%_100%,#000,transparent)]"

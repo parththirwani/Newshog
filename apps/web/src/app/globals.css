@@ -153,6 +153,19 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
   }
+
+  /* Tailwind 4 preflight sets buttons to `cursor: default`; all interactive
+     buttons in this app should show a pointer. Disabled buttons get the
+     not-allowed affordance instead. */
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [role="button"]:disabled {
+    cursor: not-allowed;
+  }
 }
 
 @layer base {

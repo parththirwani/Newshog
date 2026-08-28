@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { SiteHeader } from "@/components/landing/SiteHeader";
 import { Hero } from "@/components/landing/Hero";
@@ -9,7 +10,9 @@ import { LiveExample } from "@/components/landing/LiveExample";
 import { HowItWorks } from "@/components/landing/HowItWorks";
 import { ProofStrip } from "@/components/landing/ProofStrip";
 import { DeepResearchSection } from "@/components/landing/DeepResearchSection";
+import { PricingSection } from "@/components/landing/PricingSection";
 import { FinalCta } from "@/components/landing/FinalCta";
+import { useBilling } from "@/hooks/use-billing";
 import { SiteFooter } from "@/components/landing/SiteFooter";
 import { UpsellModal, type UpsellKind, type UpsellTier } from "@/components/app/UpsellModal";
 import type { Analysis } from "@newshog/shared";
@@ -21,6 +24,7 @@ interface Profile {
 }
 
 export default function Home() {
+  const router = useRouter();
   const [result, setResult] = useState<Analysis | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -28,6 +32,7 @@ export default function Home() {
   const [matchCount, setMatchCount] = useState<number | null>(null);
   const [quota, setQuota] = useState<{ kind: UpsellKind; tier: UpsellTier; resetsAt: string | null } | null>(null);
   const [activeMode, setActiveMode] = useState<AnalyzeMode>("quick");
+  const { start: startBilling, error: billingError } = useBilling();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopPolling = useCallback(() => {
@@ -132,6 +137,20 @@ export default function Home() {
     [pollStatus],
   );
 
+  // Mirror a failed checkout into the page's error banner so the hero upgrade
+  // button is never silently dead (useBilling swallows errors into its own
+  // state; the pricing section renders it inline, the hero doesn't).
+  useEffect(() => {
+    if (!billingError) return;
+    if (billingError.code === "billing_unconfigured") {
+      setError("Billing isn't wired up yet — reach out to get Pro access.");
+    } else if (billingError.code === "auth_required") {
+      setError("Sign in to continue.");
+    } else {
+      setError("Couldn't start checkout. Try again.");
+    }
+  }, [billingError]);
+
   const handleReanalyze = useCallback(async () => {
     if (!result?.url || !profile) return;
     setError("");
@@ -162,15 +181,37 @@ export default function Home() {
     }
   }, [result, profile, pollStatus]);
 
+  // Upgrade CTA from the landing hero: signed-in users start Stripe checkout
+  // directly; anonymous visitors go through login first (then back to billing).
+  const handleLandingUpgrade = useCallback(() => {
+    void (async () => {
+      try {
+        const me = await fetch("/api/me").then((r) => r.json());
+        if (!me.signedIn) {
+          router.push("/login?next=/pricing");
+          return;
+        }
+        await startBilling("checkout");
+      } catch {
+        setError("Couldn't start checkout. Try again.");
+      }
+    })();
+  }, [startBilling]);
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <SiteHeader />
       <main>
-        <Hero onAnalyze={handleAnalyze} onUpgrade={(kind, tier) => setQuota({ kind, tier, resetsAt: null })} />
+        <Hero
+          onAnalyze={handleAnalyze}
+          onUpgrade={(kind, tier) => setQuota({ kind, tier, resetsAt: null })}
+          handleLandingUpgrade={handleLandingUpgrade}
+        />
         <LiveExample />
         <HowItWorks />
         <ProofStrip />
         <DeepResearchSection />
+        <PricingSection />
         <FinalCta onAnalyze={handleAnalyze} onUpgrade={(kind, tier) => setQuota({ kind, tier, resetsAt: null })} />
       </main>
       <SiteFooter />

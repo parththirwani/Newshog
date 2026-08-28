@@ -10,9 +10,11 @@ const rotating = ["worth a pitch", "already crowded", "dead by noon", "your whol
 export function Hero({
   onAnalyze,
   onUpgrade,
+  handleLandingUpgrade,
 }: {
   onAnalyze?: (url: string, mode: AnalyzeMode) => void;
   onUpgrade?: (kind: UpsellKind, tier: UpsellTier) => void;
+  handleLandingUpgrade?: () => void;
 }) {
   const [i, setI] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -69,16 +71,24 @@ export function Hero({
           <UrlInput className="mt-8 max-w-xl" onAnalyze={onAnalyze} onUpgrade={onUpgrade} />
 
           <div className="mt-10 flex flex-wrap items-center gap-x-8 gap-y-4">
-            {[
-              ["31s", "median analysis"],
-              ["1.2M", "stories indexed"],
-              ["18k", "journalist beats"],
-            ].map(([value, label]) => (
-              <div key={label}>
-                <div className="text-2xl font-semibold tracking-[-0.03em] tabular-nums">{value}</div>
-                <div className="label-mono mt-0.5">{label}</div>
-              </div>
-            ))}
+            <button
+              onClick={handleLandingUpgrade}
+              className="rounded-full bg-accent-strong px-6 py-2.5 text-sm font-medium text-primary-foreground transition-[transform,opacity] hover:-translate-y-px active:translate-y-0"
+            >
+              Upgrade to Pro · $20/mo
+            </button>
+            <div className="flex flex-nowrap items-center gap-x-5 sm:gap-x-8">
+              {[
+                ["31s", "median analysis"],
+                ["1.2M", "stories indexed"],
+                ["18k", "journalist beats"],
+              ].map(([value, label]) => (
+                <div key={label}>
+                  <div className="text-2xl font-semibold tracking-[-0.03em] tabular-nums">{value}</div>
+                  <div className="label-mono mt-0.5">{label}</div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 

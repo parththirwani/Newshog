@@ -6,6 +6,15 @@ import { ArrowLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { AuthButton } from "@/components/landing/AuthButton";
 
+// Only allow a same-origin path like "/pricing" or "/dashboard". Rejects
+// absolute URLs, protocol-relative "//host", and anything not starting with
+// exactly one "/".
+function safeNext(raw: string | null): string {
+  if (!raw) return "/dashboard";
+  if (!raw.startsWith("/") || raw.startsWith("//")) return "/dashboard";
+  return raw;
+}
+
 const inputClass =
   "w-full rounded-full border border-border bg-card px-4 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-foreground/40";
 const btnPrimary =
@@ -13,6 +22,16 @@ const btnPrimary =
 
 export default function LoginPage() {
   const router = useRouter();
+  // Client-side read of ?next= so post-login we can return the user to where
+  // they were headed (e.g. the pricing section to start checkout), instead of
+  // hard-casting every login to /dashboard. Only same-origin relative paths
+  // are honored — `https://evil.example` and protocol-relative `//evil` are
+  // rejected, otherwise an attacker-controlled ?next= would redirect a freshly
+  // authenticated user off-site (open-redirect phishing vector).
+  const nextPath =
+    typeof window !== "undefined"
+      ? safeNext(new URLSearchParams(window.location.search).get("next"))
+      : "/dashboard";
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
@@ -55,7 +74,7 @@ export default function LoginPage() {
         const data = await res.json();
         setError(data.error || "Invalid code.");
       } else {
-        router.push("/dashboard");
+        router.push(nextPath);
       }
     } catch {
       setError("Failed to reach server.");
@@ -113,7 +132,7 @@ export default function LoginPage() {
               className={inputClass}
             />
             <button type="submit" disabled={loading} className={btnPrimary}>
-              {loading ? <Loader2 className="size-4 animate-spin" /> : "Verify & go to dashboard"}
+              {loading ? <Loader2 className="size-4 animate-spin" /> : "Verify & continue"}
             </button>
           </form>
         )}

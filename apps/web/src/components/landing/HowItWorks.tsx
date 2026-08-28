@@ -56,7 +56,7 @@ export function HowItWorks() {
   }, []);
 
   return (
-    <section id="how" className="border-b border-border">
+    <section id="how" className="scroll-mt-20 border-b border-border">
       <div ref={sectionRef} className="relative h-[220vh]">
         <div className="sticky top-0 flex h-screen items-center">
           <div className="mx-auto w-full max-w-6xl px-5">

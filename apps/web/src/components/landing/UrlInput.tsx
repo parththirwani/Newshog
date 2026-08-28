@@ -79,10 +79,12 @@ export function UrlInput({
     setState("working");
     await onAnalyze?.(url.trim(), mode);
     refreshUsage();
+    // Keep the button state machine cycling but do NOT scroll — analyzing
+    // from the landing hero should not yank the user down to the example
+    // section mid-run.
     timeouts.current.push(
       setTimeout(() => {
         setState("done");
-        document.getElementById("example")?.scrollIntoView({ behavior: "smooth", block: "start" });
         timeouts.current.push(
           setTimeout(() => setState("idle"), 1400),
         );
@@ -97,7 +99,7 @@ export function UrlInput({
     "Paste a URL and get a newsworthiness score in seconds";
   if (mode === "deep") {
     if (usage && canDeep) {
-      helper = `Grounded in live research across recent coverage — takes longer than a quick score (${deepRemaining} ${deepRemaining === 1 ? "run" : "runs"} left this ${
+      helper = `Grounded in live research across recent coverage takes longer than a quick score (${deepRemaining} ${deepRemaining === 1 ? "run" : "runs"} left this ${
         usage.tier === "pro" ? "cycle" : "day"
       })`;
     } else if (usage?.signedIn) {

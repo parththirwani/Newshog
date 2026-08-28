@@ -1,12 +1,16 @@
 import Image from "next/image";
 import logo from "../../public/logo.png";
 import { AuthButton } from "./AuthButton";
+import { ScrollLink } from "./ScrollLink";
 
 export function SiteHeader() {
   return (
     <header className="sticky top-0 z-50 border-b border-border/70 bg-background/85 backdrop-blur">
       <div className="mx-auto flex h-auto max-w-6xl items-center justify-between px-5 py-4">
-        <a href="#top" className="flex items-center gap-2.5">
+        <ScrollLink
+          target="top"
+          className="flex items-center gap-2.5 transition-colors hover:text-foreground"
+        >
           <Image
             src={logo}
             alt="Newshog logo"
@@ -16,26 +20,26 @@ export function SiteHeader() {
             priority
           />
           <span className="text-xl font-semibold tracking-[-0.02em]">Newshog</span>
-        </a>
+        </ScrollLink>
         <nav className="hidden items-center gap-7 text-sm text-muted-foreground md:flex">
-          <a className="transition-colors hover:text-foreground" href="#example">
+          <ScrollLink target="example" className="transition-colors hover:text-foreground">
             Example
-          </a>
-          <a className="transition-colors hover:text-foreground" href="#how">
+          </ScrollLink>
+          <ScrollLink target="how" className="transition-colors hover:text-foreground">
             How it works
-          </a>
-          <a className="transition-colors hover:text-foreground" href="#cta">
+          </ScrollLink>
+          <ScrollLink target="pricing" className="transition-colors hover:text-foreground">
             Pricing
-          </a>
+          </ScrollLink>
         </nav>
         <div className="flex items-center gap-2">
           <AuthButton />
-          <a
-            href="#cta"
+          <ScrollLink
+            target="cta"
             className="rounded-full border border-border px-3.5 py-1.5 text-sm font-medium transition-colors hover:bg-secondary"
           >
             Score a story
-          </a>
+          </ScrollLink>
         </div>
       </div>
     </header>

@@ -36,7 +36,7 @@ export function LiveExample() {
   const [tab, setTab] = useState<Tab>("Why now");
 
   return (
-    <section id="example" className="border-b border-border">
+    <section id="example" className="scroll-mt-20 border-b border-border">
       <div className="mx-auto max-w-6xl px-5 py-24 lg:py-32">
         <div className="grid gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
           <Reveal className="lg:sticky lg:top-24 lg:self-start">
