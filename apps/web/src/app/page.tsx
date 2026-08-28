@@ -284,12 +284,12 @@ export default function Home() {
               </button>
             )}
             {!profile && (
-              <a
+              <Link
                 href="/profile"
                 className="text-xs text-accent-strong hover:underline"
               >
                 Personalize this for me
-              </a>
+              </Link>
             )}
           </div>
         </div>

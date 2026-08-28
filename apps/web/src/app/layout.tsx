@@ -13,6 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  // Resolves relative og:image etc. to absolute URLs regardless of the deploy
+  // host (Vercel sets NEXT_PUBLIC_SITE_URL / VERCEL_URL; localhost in dev).
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
   title: "Newshog",
   description:
     "Paste a breaking-news URL and get a newsjack score, ranked angles, matched journalists, and a ready-to-send pitch in about 30 seconds.",
@@ -21,9 +24,11 @@ export const metadata: Metadata = {
     description:
       "Paste a breaking-news URL and get a newsjack score, ranked angles, matched journalists, and a ready-to-send pitch in about 30 seconds.",
     type: "website",
+    images: ["/icon.png"],
   },
   twitter: {
-    card: "summary_large_image",
+    card: "summary",
+    images: ["/icon.png"],
   },
 };
 

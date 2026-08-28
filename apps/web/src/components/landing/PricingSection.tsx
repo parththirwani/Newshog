@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Loader2, Sparkles } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import { Reveal } from "./Reveal";
 import { useBilling } from "@/hooks/use-billing";
 
@@ -97,8 +97,7 @@ export function PricingSection() {
           {/* Pro */}
           <Reveal delay={80}>
             <div className="live-border relative flex h-full flex-col rounded-2xl border border-border bg-card p-7">
-              <span className="absolute -top-3 right-6 inline-flex items-center gap-1 rounded-full bg-accent-strong px-3 py-1 text-[11px] font-semibold text-primary-foreground">
-                <Sparkles className="size-3" strokeWidth={2.25} />
+              <span className="absolute -top-3 right-6 inline-flex items-center rounded-full bg-accent-strong px-3 py-1 text-[11px] font-semibold text-primary-foreground">
                 Most popular
               </span>
               <p className="label-mono">Pro</p>

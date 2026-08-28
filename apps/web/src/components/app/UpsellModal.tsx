@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 
 export type UpsellKind = "quick_search" | "deep_research";
 export type UpsellTier = "anonymous" | "free" | "pro";
@@ -92,12 +93,12 @@ export function UpsellModal({
 
         <div className="mt-5 flex items-center gap-2">
           {tier === "anonymous" ? (
-            <a
+            <Link
               href="/login"
               className="inline-flex items-center gap-1.5 rounded-full bg-accent-strong px-4 py-2 text-sm font-medium text-primary-foreground"
             >
               Log in / Sign up
-            </a>
+            </Link>
           ) : tier === "free" ? (
             <button
               onClick={upgrade}
