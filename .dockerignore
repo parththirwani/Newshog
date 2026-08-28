@@ -1,0 +1,10 @@
+# Build context hygiene for the worker image build.
+**/node_modules
+**/.next
+**/.turbo
+.git
+.opencode
+.env
+.env.*
+!.env.example
+*.log

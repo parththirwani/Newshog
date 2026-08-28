@@ -32,7 +32,7 @@ const TIMING: Record<string, Record<string, NextAction>> = {
   Strong: {
     breaking: {
       timing: "Now–24h",
-      action: "This is peaking — pitch today or lose the window.",
+      action: "This is peaking pitch today or lose the window.",
     },
     standard: {
       timing: "Now–48h",
@@ -40,7 +40,7 @@ const TIMING: Record<string, Record<string, NextAction>> = {
     },
     evergreen: {
       timing: "This week",
-      action: "Strong story with a longer shelf life — no need to rush, but don't sit on it.",
+      action: "Strong story with a longer shelf life no need to rush, but don't sit on it.",
     },
   },
   Consider: {
@@ -49,9 +49,9 @@ const TIMING: Record<string, Record<string, NextAction>> = {
     evergreen: { timing: "This week", action: "Watch this one. If the story gets a fresh development, that's your gap to pitch in." },
   },
   Skip: {
-    breaking: { timing: "Skip", action: "Don't newsjack this — the story is too quiet. Spend the effort where timing is on your side." },
-    standard: { timing: "Skip", action: "Don't newsjack this — the story is too quiet. Spend the effort where timing is on your side." },
-    evergreen: { timing: "Skip", action: "Don't newsjack this — the story is too quiet. Spend the effort where timing is on your side." },
+    breaking: { timing: "Skip", action: "Don't newsjack this the story is too quiet. Spend the effort where timing is on your side." },
+    standard: { timing: "Skip", action: "Don't newsjack this the story is too quiet. Spend the effort where timing is on your side." },
+    evergreen: { timing: "Skip", action: "Don't newsjack this the story is too quiet. Spend the effort where timing is on your side." },
   },
 };
 

@@ -277,6 +277,10 @@ const emailIngestWorker = new Worker(
     console.log(`[worker] fetched ${emails.length} digest emails`);
 
     const processedUids: number[] = [];
+    // ponytail: count newly persisted requests; a nonzero count triggers the
+    // retro-match sweep below so stories analyzed before this mail can surface
+    // the fresh requests — otherwise "no matches" stays true forever.
+    let newRequests = 0;
 
     for (const email of emails) {
       // One bad email (parse error, LLM hiccup, bad deadline) must not abort
@@ -311,6 +315,7 @@ const emailIngestWorker = new Worker(
               expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 day expiry
             },
           });
+          newRequests++;
         }
 
         processedUids.push(email.uid);
@@ -322,6 +327,27 @@ const emailIngestWorker = new Worker(
     // Flag seen only after successful persistence so a failed email retries.
     if (processedUids.length > 0) {
       await markEmailsSeen(processedUids);
+    }
+
+    // New requests land retroactively: re-match recently analyzed stories so an
+    // existing result page can surface them. Bounded to the 7-day window in
+    // which a request stays live (the match worker ignores expired ones).
+    if (newRequests > 0) {
+      const recent = await prisma.analysis.findMany({
+        where: {
+          status: "analyzed",
+          createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+        },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+        take: 200,
+      });
+      console.log(`[worker] retro-matching ${recent.length} recent analyses for ${newRequests} new request(s)`);
+      for (const { id } of recent) {
+        // jobId namespaced so a pending sweep can't stack duplicates; completed
+        // sweeps are re-addable and the upsert in the match worker is idempotent.
+        await getMatchQueue().add("match", { analysisId: id }, { jobId: `rematch-${id}` });
+      }
     }
 
     console.log("[worker] email digest ingestion complete");

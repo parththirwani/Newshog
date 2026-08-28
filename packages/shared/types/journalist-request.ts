@@ -1,4 +1,11 @@
-export type SourcePlatform = "source_of_sources" | "help_a_b2b_writer" | "sourcebottle";
+export type SourcePlatform =
+  | "source_of_sources"
+  | "help_a_b2b_writer"
+  | "sourcebottle"
+  | "haro"
+  | "qwoted"
+  | "mentionmatch"
+  | "pressplugs";
 
 export interface JournalistRequest {
   id: string;

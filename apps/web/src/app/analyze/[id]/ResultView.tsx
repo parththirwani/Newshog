@@ -212,15 +212,26 @@ export function ResultView({
   useEffect(() => {
     if (analysis?.status !== "analyzed") return;
     let cancelled = false;
-    fetch(`/api/analyze/${id}/matches`)
-      .then((r) => r.json())
-      .then((data) => {
+    let timer: ReturnType<typeof setInterval> | undefined;
+    // ponytail: poll matches while the result is open. Matching runs on the
+    // worker after analysis completes AND again when new journalist requests
+    // are ingested (retro-match), so the count can change after load — a
+    // one-shot fetch would leave "no matches" stuck forever.
+    const load = async () => {
+      try {
+        const res = await fetch(`/api/analyze/${id}/matches`);
+        const data = await res.json();
         if (!cancelled && data) setMatches(data);
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) setMatchesErr(true);
-      });
-    return () => { cancelled = true; };
+      }
+    };
+    void load();
+    timer = setInterval(load, 20_000);
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+    };
   }, [id, analysis?.status]);
 
   const generate = useCallback(
@@ -472,7 +483,7 @@ export function ResultView({
               )}
               {matches !== null && (!matchList || matchList.length === 0) && matchCount === 0 && (
                 <div className="mt-3 rounded-xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
-                  No open journalist requests match this story right now. Check back soon.
+                  No open journalist requests match this story yet — this updates automatically as new requests come in.
                 </div>
               )}
               {matchList !== null && matchList.length > 0 && owner && (
@@ -485,7 +496,7 @@ export function ResultView({
                         </p>
                         {m.journalistRequest.deadline && (
                           <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                            Due {new Date(m.journalistRequest.deadline).toLocaleDateString()}
+                            Due {new Date(m.journalistRequest.deadline).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
                           </span>
                         )}
                       </div>

@@ -82,7 +82,7 @@ export function UrlInput({
             onClick={() => setMode(m)}
             className={cn(
               "flex-1 inline-flex items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition-colors",
-              mode === m ? "bg-accent/10 text-foreground" : "text-muted-foreground hover:bg-secondary",
+              mode === m ? "bg-accent-strong/10 text-foreground" : "text-muted-foreground hover:bg-secondary",
             )}
           >
             {m === "quick" ? "Quick score" : (
@@ -141,7 +141,7 @@ export function UrlInput({
       <p className="mt-3 label-mono">
         {mode === "deep"
           ? pro
-            ? "Grounded in live research across recent coverage — takes longer than a quick score"
+            ? "Grounded in live research across recent coverage takes longer than a quick score"
             : "Deep research is a Pro feature — upgrade to run it"
 : remaining !== null
               ? remaining > 0

@@ -15,5 +15,21 @@ services:
     ports:
       - "6379:6379"
 
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    # Local overrides so the worker talks to this stack's containers over the
+    # compose network, not the host-local endpoints in .env (which are
+    # addressed from the host, e.g. for the dev server).
+    environment:
+      DATABASE_URL: postgresql://newshog:newshog@postgres:5432/newshog
+      REDIS_URL: redis://redis:6379
+    env_file: .env
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
 volumes:
   pgdata:

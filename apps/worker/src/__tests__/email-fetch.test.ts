@@ -85,7 +85,7 @@ describe("fetchDigestEmails", () => {
     expect(results[0].uid).toBe(101);
   });
 
-  it("detects Help a B2B Writer platform", async () => {
+  it("detects MentionMatcher platform", async () => {
     const rawEmail = makeRawEmail("team@mentionmatch.com", "B2B digest", "query");
     mockSearch.mockResolvedValue([201]);
     mockFetchOne.mockResolvedValue({ source: rawEmail, uid: 201 });
@@ -99,7 +99,7 @@ describe("fetchDigestEmails", () => {
 
     const results = await fetchDigestEmails();
     expect(results).toHaveLength(1);
-    expect(results[0].platform).toBe("help_a_b2b_writer");
+    expect(results[0].platform).toBe("mentionmatch");
   });
 
   it("detects SourceBottle platform", async () => {
@@ -118,6 +118,47 @@ describe("fetchDigestEmails", () => {
     expect(results).toHaveLength(1);
     expect(results[0].platform).toBe("sourcebottle");
   });
+
+  it.each([
+    ["qwoted.com", "qwoted", "sources@qwoted.com"],
+    ["haro.featured.com", "haro", "noreply@haro.featured.com"],
+    ["featured.com", "haro", "team@featured.com"],
+    ["pressplugs.com", "pressplugs", "digest@pressplugs.com"],
+  ])("detects platform %s from sender %s", async (_domain, platform, sender) => {
+    const rawEmail = makeRawEmail(sender, "digest", "query");
+    mockSearch.mockResolvedValue([401]);
+    mockFetchOne.mockResolvedValue({ source: rawEmail, uid: 401 });
+    (simpleParser as ReturnType<typeof vi.fn>).mockResolvedValue({
+      subject: "digest",
+      text: "query",
+      html: "",
+      from: { text: sender },
+      date: new Date(),
+    });
+
+    const results = await fetchDigestEmails();
+    expect(results).toHaveLength(1);
+    expect(results[0].platform).toBe(platform);
+  });
+
+  it.each(["noreply@getfeatured.com", "mail.joewoted.com", "team@notqwoted.net"])(
+    "rejects lookalike sender %s",
+    async (sender) => {
+      const rawEmail = makeRawEmail(sender, "digest", "query");
+      mockSearch.mockResolvedValue([402]);
+      mockFetchOne.mockResolvedValue({ source: rawEmail, uid: 402 });
+      (simpleParser as ReturnType<typeof vi.fn>).mockResolvedValue({
+        subject: "digest",
+        text: "query",
+        html: "",
+        from: { text: sender },
+        date: new Date(),
+      });
+
+      const results = await fetchDigestEmails();
+      expect(results).toEqual([]);
+    },
+  );
 
   it("skips emails from unknown senders", async () => {
     const rawEmail = makeRawEmail("spam@unknown.com", "Spam", "text");
@@ -138,7 +179,13 @@ describe("fetchDigestEmails", () => {
   it("searches only unseen messages", async () => {
     mockSearch.mockResolvedValue([]);
     await fetchDigestEmails();
-    expect(mockSearch).toHaveBeenCalledWith(["UNSEEN"], { uid: true });
+    expect(mockSearch).toHaveBeenCalledWith({ seen: false }, { uid: true });
+  });
+
+  it("returns empty array when search returns a non-array", async () => {
+    mockSearch.mockResolvedValue(false);
+    const results = await fetchDigestEmails();
+    expect(results).toEqual([]);
   });
 
   it("skips emails with no source buffer", async () => {

@@ -4,6 +4,7 @@ const prismaMock = {
   analysis: {
     findUnique: vi.fn(),
     update: vi.fn(),
+    findMany: vi.fn().mockResolvedValue([]),
   },
   profile: {
     findUnique: vi.fn(),
@@ -391,6 +392,40 @@ describe("email ingest worker", () => {
         expiresAt: expect.any(Date),
       },
     });
+  });
+
+  it("enqueues retro-match jobs for recent analyses when new requests land", async () => {
+    fetchDigestEmailsMock.mockResolvedValue([
+      { uid: 1, subject: "Digest", text: "query", html: "", from: "digest@sourceofsources.com", date: new Date(), platform: "source_of_sources" },
+    ]);
+    extractJournalistRequestsMock.mockResolvedValue([
+      { requester_name: null, outlet: null, topic_text: "New topic", deadline: null, reply_contact: null },
+    ]);
+    prismaMock.journalistRequest.findFirst.mockResolvedValue(null);
+    prismaMock.analysis.findMany.mockResolvedValue([
+      { id: "story-1" },
+      { id: "story-2" },
+    ]);
+
+    await capturedProcessors["email-ingest-test"]({ data: {} });
+
+    expect(matchQueueAddMock).toHaveBeenCalledWith("match", { analysisId: "story-1" }, { jobId: "rematch-story-1" });
+    expect(matchQueueAddMock).toHaveBeenCalledWith("match", { analysisId: "story-2" }, { jobId: "rematch-story-2" });
+  });
+
+  it("skips retro-match sweep when no new requests were persisted", async () => {
+    fetchDigestEmailsMock.mockResolvedValue([
+      { uid: 1, subject: "Digest", text: "query", html: "", from: "digest@sourceofsources.com", date: new Date(), platform: "source_of_sources" },
+    ]);
+    extractJournalistRequestsMock.mockResolvedValue([
+      { requester_name: null, outlet: null, topic_text: "Same topic", deadline: null, reply_contact: null },
+    ]);
+    prismaMock.journalistRequest.findFirst.mockResolvedValue({ id: "existing-req" });
+
+    await capturedProcessors["email-ingest-test"]({ data: {} });
+
+    expect(prismaMock.analysis.findMany).not.toHaveBeenCalled();
+    expect(matchQueueAddMock).not.toHaveBeenCalled();
   });
 
   it("deduplicates requests within 24h", async () => {
