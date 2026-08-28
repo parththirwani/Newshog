@@ -17,6 +17,8 @@ export {
   STALE_DAYS,
   agePenalty,
 } from "./constants";
+export { buildProfileContext } from "./profile-context";
+export type { ProfileLike } from "./profile-context";
 export type {
   Angle,
   LlmAnalysis,

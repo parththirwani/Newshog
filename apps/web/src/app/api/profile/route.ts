@@ -3,6 +3,7 @@ import { prisma } from "@newshog/db";
 import { getSessionUser } from "@/lib/auth";
 import { summarizeIndividualProfile, summarizeCompanyProfile } from "@/lib/summarize";
 import { fetchXProfile } from "@/lib/x-api";
+import { fetchLinkedInProfile, linkedinProfileText } from "@/lib/linkedin";
 import { crawlCompanySite } from "@/lib/crawl";
 import type { ProfileType } from "@newshog/shared";
 import { trackServer } from "@/lib/analytics";
@@ -11,6 +12,33 @@ async function requireUser() {
   const user = await getSessionUser();
   if (!user) return null;
   return user;
+}
+
+// LinkedIn is scraped for real via Apify (never a bare URL string). Failures
+// become an explicit "LinkedIn unavailable (reason)" marker — the prompt and
+// logs see a real signal instead of an empty string, and summarize()'s
+// short-circuit treats all-unavailable as insufficient data.
+async function scrapeLinkedinSection(linkedinUrl?: string): Promise<string> {
+  if (!linkedinUrl) return "";
+  const li = await fetchLinkedInProfile(linkedinUrl);
+  if (li.status === "ok") {
+    return linkedinProfileText(li.data);
+  }
+  return `LinkedIn unavailable (${li.reason})`;
+}
+
+function assembleBio(opts: {
+  linkedinUrl?: string;
+  linkedinSection?: string;
+  xUnavailable?: string | null;
+  freeTextBio?: string;
+}): string {
+  return [
+    opts.linkedinUrl && `LinkedIn: ${opts.linkedinUrl}`,
+    opts.linkedinSection,
+    opts.xUnavailable && `X unavailable (${opts.xUnavailable})`,
+    opts.freeTextBio,
+  ].filter(Boolean).join("\n\n") || "No bio provided.";
 }
 
 export async function GET() {
@@ -47,17 +75,23 @@ export async function POST(request: Request) {
   try {
     if (type === "individual") {
       const { linkedinUrl, xHandle, freeTextBio } = body;
-      const bio = [linkedinUrl && `LinkedIn: ${linkedinUrl}`, freeTextBio].filter(Boolean).join("\n\n") || "No bio provided.";
+
+      const linkedinSection = await scrapeLinkedinSection(linkedinUrl);
 
       let xPosts: string[] | undefined;
       let xRawData: Record<string, unknown> | null = null;
+      let xUnavailable: string | null = null;
       if (xHandle) {
         const xData = await fetchXProfile(xHandle);
-        if (xData) {
+        if (xData.ok) {
           xPosts = xData.recentPosts;
           xRawData = xData as unknown as Record<string, unknown>;
+        } else {
+          xUnavailable = xData.reason;
         }
       }
+
+      const bio = assembleBio({ linkedinUrl, linkedinSection, xUnavailable, freeTextBio });
 
       const expertiseSummary = await summarizeIndividualProfile(bio, xPosts);
 
@@ -144,20 +178,27 @@ export async function PUT(request: Request) {
   try {
     if (existing.type === "individual") {
       const { linkedinUrl, xHandle, freeTextBio } = body;
-      const bio = [linkedinUrl && `LinkedIn: ${linkedinUrl}`, freeTextBio].filter(Boolean).join("\n\n") || "No bio provided.";
+
+      const linkedinSection = await scrapeLinkedinSection(linkedinUrl);
 
       let xPosts: string[] | undefined;
       let xRawData: Record<string, unknown> | null = (existing.individual?.xRawData as Record<string, unknown>) ?? null;
+      let xUnavailable: string | null = null;
       if (xHandle && xHandle !== existing.individual?.xHandle) {
         const xData = await fetchXProfile(xHandle);
-        if (xData) {
+        if (xData.ok) {
           xPosts = xData.recentPosts;
           xRawData = xData as unknown as Record<string, unknown>;
+        } else {
+          xUnavailable = xData.reason;
+          xRawData = null;
         }
       } else if (existing.individual?.xRawData) {
         const raw = existing.individual.xRawData as { recentPosts?: string[] };
         xPosts = raw.recentPosts;
       }
+
+      const bio = assembleBio({ linkedinUrl, linkedinSection, xUnavailable, freeTextBio });
 
       const expertiseSummary = await summarizeIndividualProfile(bio, xPosts);
 

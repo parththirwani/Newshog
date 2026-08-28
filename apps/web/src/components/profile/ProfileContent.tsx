@@ -10,7 +10,6 @@ interface Profile {
   type: ProfileType;
   individual?: {
     linkedinUrl?: string;
-    xHandle?: string;
     freeTextBio?: string;
     expertiseSummary?: ExpertiseSummary;
   } | null;
@@ -42,7 +41,6 @@ export function ProfileContent({ user }: { user: { email: string } }) {
   const [profileType, setProfileType] = useState<ProfileType>("individual");
 
   const [linkedinUrl, setLinkedinUrl] = useState("");
-  const [xHandle, setXHandle] = useState("");
   const [freeTextBio, setFreeTextBio] = useState("");
 
   const [companyName, setCompanyName] = useState("");
@@ -65,7 +63,6 @@ export function ProfileContent({ user }: { user: { email: string } }) {
           setProfileType(data.type);
           if (data.type === "individual" && data.individual) {
             setLinkedinUrl(data.individual.linkedinUrl ?? "");
-            setXHandle(data.individual.xHandle ?? "");
             setFreeTextBio(data.individual.freeTextBio ?? "");
             setSummary(data.individual.expertiseSummary ?? null);
           } else if (data.type === "enterprise" && data.enterprise) {
@@ -89,7 +86,7 @@ export function ProfileContent({ user }: { user: { email: string } }) {
     try {
       const body =
         profileType === "individual"
-          ? { type: "individual", linkedinUrl, xHandle, freeTextBio }
+          ? { type: "individual", linkedinUrl, freeTextBio }
           : { type: "enterprise", companyName, companyDescription, websiteUrl, docsUrl, pdfText };
 
       const res = await fetch("/api/profile", {
@@ -124,7 +121,7 @@ export function ProfileContent({ user }: { user: { email: string } }) {
     try {
       const body =
         profileType === "individual"
-          ? { linkedinUrl, xHandle, freeTextBio }
+          ? { linkedinUrl, freeTextBio }
           : { companyName, companyDescription, websiteUrl, docsUrl, pdfText };
 
       const res = await fetch("/api/profile", {
@@ -233,15 +230,6 @@ export function ProfileContent({ user }: { user: { email: string } }) {
               value={linkedinUrl}
               onChange={(e) => setLinkedinUrl(e.target.value)}
               placeholder="https://linkedin.com/in/yourname"
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1.5">X / Twitter handle</label>
-            <input
-              value={xHandle}
-              onChange={(e) => setXHandle(e.target.value)}
-              placeholder="@yourhandle"
               className={inputClass}
             />
           </div>
@@ -358,10 +346,6 @@ export function ProfileContent({ user }: { user: { email: string } }) {
                 <input value={linkedinUrl} onChange={(e) => setLinkedinUrl(e.target.value)} className={inputClass} />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1.5">X handle</label>
-                <input value={xHandle} onChange={(e) => setXHandle(e.target.value)} className={inputClass} />
-              </div>
-              <div>
                 <label className="block text-sm font-medium mb-1.5">About me</label>
                 <textarea value={freeTextBio} onChange={(e) => setFreeTextBio(e.target.value)} rows={5} className={textareaClass} />
               </div>
@@ -438,7 +422,10 @@ function SummaryList({ label, items }: { label: string; items: string[] | undefi
       <p className="text-xs text-muted-foreground mb-1">{label}</p>
       <div className="flex flex-wrap gap-1.5">
         {list.map((item, i) => (
-          <span key={i} className="inline-block rounded-full bg-accent-soft px-2.5 py-0.5 text-xs text-foreground">
+          <span
+            key={i}
+            className="inline-block h-auto max-w-full min-w-0 overflow-visible whitespace-normal break-words rounded-lg bg-accent-soft px-3 py-1.5 text-xs leading-normal text-foreground"
+          >
             {item}
           </span>
         ))}

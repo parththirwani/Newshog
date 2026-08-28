@@ -18,12 +18,18 @@ const INDIVIDUAL_TOOL = {
     description: "Submit the individual expertise profile",
     parameters: {
       type: "object",
-      required: ["topics", "tone", "credentials", "recurring_themes"],
+      // Topics/credentials/themes are required so the schema shape is stable,
+      // but they may be empty arrays. tone is nullable. insufficient_data is
+      // the honest escape hatch: sparse input is never padded with invented
+      // expertise to satisfy a non-null tone.
+      required: ["topics", "tone", "credentials", "recurring_themes", "recurring_themes_confidence", "insufficient_data"],
       properties: {
-        topics: { type: "array", items: { type: "string" }, description: "Topics this person covers or is known for" },
-        tone: { type: "string", description: "Their professional writing/speaking tone" },
-        credentials: { type: "array", items: { type: "string" }, description: "Stated credentials, titles, affiliations" },
-        recurring_themes: { type: "array", items: { type: "string" }, description: "Themes that appear repeatedly in their content" },
+        topics: { type: "array", items: { type: "string" }, description: "Topics this person covers or is known for — empty array when not evidenced" },
+        tone: { type: ["string", "null"], description: "Their professional writing/speaking tone — null when the source text gives no signal" },
+        credentials: { type: "array", items: { type: "string" }, description: "Stated credentials, titles, affiliations — empty array when not evidenced" },
+        recurring_themes: { type: "array", items: { type: "string" }, description: "Themes that appear repeatedly in their content — empty array when only one source or none" },
+        recurring_themes_confidence: { type: "string", enum: ["single_source", "multi_source", "null"], description: "single_source when only one source was provided; null when no themes were found" },
+        insufficient_data: { type: "boolean", description: "true when the provided text is too sparse to extract real expertise — do not fabricate to fill other fields" },
       },
     },
   },
@@ -56,10 +62,42 @@ const ENTERPRISE_TOOL = {
   },
 };
 
+// A bio that only interpolates URLs, "unavailable" markers (from failed
+// LinkedIn/X fetch attempts), or the "No bio provided." fallback with no X
+// posts carries zero real signal. Short-circuiting saves an LLM call and makes
+// the insufficient-data case deterministic instead of relying on the model to
+// behave. Sparse-but-real text (e.g. a written bio with no sources) still goes
+// through the LLM with the null-tolerant schema.
+function hasSubstantiveContent(bio: string, xPosts?: string[]): boolean {
+  const stripped = bio
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/linkedin:?\s*(unavailable\s*\([^)]*\))?/gi, "")
+    .replace(/x\s+unavailable\s*\([^)]*\)/gi, "")
+    .replace(/no bio provided\./gi, "")
+    .trim();
+  return stripped.length > 0 || (xPosts?.length ?? 0) > 0;
+}
+
+function insufficientSummary(): ExpertiseSummary {
+  return {
+    topics: [],
+    tone: null,
+    credentials: [],
+    recurringThemes: [],
+    insufficientData: true,
+    recurringThemesConfidence: null,
+    sourceQuality: "verified",
+  };
+}
+
 export async function summarizeIndividualProfile(
   bio: string,
   xPosts?: string[],
 ): Promise<ExpertiseSummary> {
+  if (!hasSubstantiveContent(bio, xPosts)) {
+    return insufficientSummary();
+  }
+
   const xSection = xPosts?.length
     ? `\n\nRecent X/Twitter posts:\n${xPosts.join("\n")}`
     : "";
@@ -83,11 +121,24 @@ export async function summarizeIndividualProfile(
   }
 
   const raw = JSON.parse(toolCall.function.arguments);
+  const topics = toStringArray(raw.topics);
+  const credentials = toStringArray(raw.credentials);
+  const recurringThemes = toStringArray(raw.recurring_themes);
+  const tone = typeof raw.tone === "string" && raw.tone.trim() ? raw.tone : null;
+  const allEmpty = topics.length === 0 && !tone && credentials.length === 0 && recurringThemes.length === 0;
   return {
-    topics: toStringArray(raw.topics),
-    tone: typeof raw.tone === "string" ? raw.tone : "",
-    credentials: toStringArray(raw.credentials),
-    recurringThemes: toStringArray(raw.recurring_themes),
+    topics,
+    tone,
+    credentials,
+    recurringThemes,
+    // Defensive: even if the model forgets insufficient_data, all-empty fields
+    // must not be presented downstream as real expertise.
+    insufficientData: raw.insufficient_data === true || allEmpty,
+    recurringThemesConfidence:
+      raw.recurring_themes_confidence === "single_source" || raw.recurring_themes_confidence === "multi_source"
+        ? raw.recurring_themes_confidence
+        : null,
+    sourceQuality: "verified",
   };
 }
 

@@ -16,6 +16,7 @@
     "@newshog/shared": "workspace:*",
     "@types/jsdom": "^30.0.0",
     "clsx": "^2.1.1",
+    "ioredis": "^5",
     "jsdom": "^30.0.1",
     "lucide-react": "^1.33.0",
     "next": "^15",

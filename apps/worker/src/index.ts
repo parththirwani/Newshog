@@ -10,41 +10,8 @@ import { matchRequestsToAnalysis } from "./match-requests";
 import { deepResearchWorker } from "./deep-research";
 import { deepAnalyzeArticle } from "./deep-analyze";
 import { applyGrounding } from "./postprocess";
-import type { ExpertiseSummary, CompanyContext, JournalistRequest } from "@newshog/shared";
-
-function stringList(value: unknown): string {
-  if (Array.isArray(value)) return (value as unknown[]).filter((v) => typeof v === "string").join(", ");
-  if (typeof value === "string") return value;
-  return "";
-}
-
-function buildProfileContext(profile: {
-  type: string;
-  individual?: { expertiseSummary?: unknown } | null;
-  enterprise?: { companyContext?: unknown; companyName?: string } | null;
-}): string {
-  if (profile.type === "individual" && profile.individual?.expertiseSummary) {
-    const s = profile.individual.expertiseSummary as ExpertiseSummary;
-    return [
-      `Topics: ${stringList(s.topics)}`,
-      `Tone: ${s.tone}`,
-      `Credentials: ${stringList(s.credentials)}`,
-      `Recurring themes: ${stringList(s.recurringThemes)}`,
-    ].join("\n");
-  }
-  if (profile.type === "enterprise" && profile.enterprise?.companyContext) {
-    const c = profile.enterprise.companyContext as CompanyContext;
-    return [
-      `Company: ${profile.enterprise.companyName}`,
-      `What they do: ${c.whatTheyDo}`,
-      `Who they serve: ${c.whoTheyServe}`,
-      `Product categories: ${stringList(c.productCategories)}`,
-      `Positioning/voice: ${c.positioningVoice}`,
-      `Areas of authority: ${stringList(c.areasOfAuthority)}`,
-    ].join("\n");
-  }
-  return "";
-}
+import { buildProfileContext } from "@newshog/shared";
+import type { JournalistRequest } from "@newshog/shared";
 
 const connection = createConnection();
 
