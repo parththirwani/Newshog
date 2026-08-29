@@ -89,6 +89,75 @@ export function buildResearchContext(query: string, answers: ClarificationAnswer
   return `Original research request:\n${query}\n\nUser clarifications:\n${clarifications}`;
 }
 
+// ── Entity extraction + relevance gate ─────────────────────────
+// Anchor query/angle generation to the article's real topic so a hallucinated
+// off-topic query (the Wispr→denim regression) cannot derail a run. Fix 1
+// stuffs the entities into the plan prompts; Fix 2 deterministically drops any
+// generated query that shares nothing with the seed topic before it is spent
+// on a real search.
+const ENTITY_STOPWORDS = new Set(["the", "this", "that", "these", "those", "of", "for", "and", "research", "article", "request", "what", "how", "why", "who"]);
+const FUNCTION_WORDS = new Set(["a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "is", "it", "its", "of", "on", "or", "that", "the", "this", "to", "was", "were", "with"]);
+
+/** Lightweight proper-noun extraction — plain token runs, no LLM call. */
+export function extractEntities(text: string): string[] {
+  const matches = text.match(/[A-Z][A-Za-z0-9.'&]+(?:\s+(?:of\s+)?[A-Z][A-Za-z0-9.'&]+)*/g) ?? [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const match of matches) {
+    const value = match.trim();
+    const key = value.toLowerCase();
+    if (ENTITY_STOPWORDS.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out.slice(0, 8);
+}
+
+function tokenize(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((token) => token.length > 1 && !FUNCTION_WORDS.has(token)),
+  );
+}
+
+/** True when a query references a key entity or shares meaningful tokens with the seed topic. */
+export function isQueryRelevant(query: string, seedTopic: string, entities: string[]): boolean {
+  const lower = query.toLowerCase();
+  if (entities.some((entity) => lower.includes(entity.toLowerCase()))) return true;
+  const queryTokens = tokenize(query);
+  const seedTokens = tokenize(seedTopic);
+  for (const token of queryTokens) if (seedTokens.has(token)) return true;
+  return false;
+}
+
+export interface QueryDropped {
+  query: string;
+  researchGoal: string;
+  reason: string;
+}
+
+/**
+ * Drop queries with no link to the seed topic. `kept` may come back empty when
+ * nothing is relevant — the caller decides whether that means "all dropped"
+ * (fail open) vs. "none were irrelevant". Deterministic, so the fix is testable
+ * offline and never reuses the same weak model it is guarding against.
+ */
+export function filterRelevantQueries(
+  queries: Array<{ query: string; researchGoal: string }>,
+  seedTopic: string,
+  entities: string[],
+): { kept: Array<{ query: string; researchGoal: string }>; dropped: QueryDropped[] } {
+  const kept: Array<{ query: string; researchGoal: string }> = [];
+  const dropped: QueryDropped[] = [];
+  for (const item of queries) {
+    if (isQueryRelevant(item.query, seedTopic, entities)) kept.push(item);
+    else dropped.push({ ...item, reason: "No overlap with the seed article's topic or key entities." });
+  }
+  return { kept, dropped };
+}
+
 interface ResearchState {
   learnings: Learning[];
   visitedUrls: string[];
@@ -217,16 +286,33 @@ async function research(args: {
   deps: Deps;
   state: ResearchState;
   innerConcurrency: number;
+  /** Original seed text (context), so relevance is judged against the run's article, not the current depth's query. */
+  seedTopic: string;
+  entities: string[];
 }): Promise<void> {
-  const { query, breadth, depth, deps, state, innerConcurrency } = args;
+  const { query, breadth, depth, deps, state, innerConcurrency, seedTopic, entities } = args;
   ensureActive(deps.signal);
 
   deps.emit.emit("research.plan.started", { query: preview(query), breadth, depth });
-  const queries = await structured(deps, {
-    prompt: planPrompt(query, breadth, state.learnings, state.coveredQueries),
+  let queries = await structured(deps, {
+    prompt: planPrompt(query, breadth, state.learnings, state.coveredQueries, entities),
     parser: parseResearchPlan,
     purpose: "generate_search_plan",
   });
+
+  // Fix 2 — relevance gate. Deterministic drop of off-topic queries before any
+  // search/scrape spend. Fails open: a gate that would zero the plan is broken,
+  // not confident — keep the ungated queries rather than return an empty run.
+  const { kept, dropped } = filterRelevantQueries(queries, seedTopic, entities);
+  for (const droppedQuery of dropped) {
+    deps.emit.emit("query.dropped", { query: droppedQuery.query, researchGoal: droppedQuery.researchGoal, reason: droppedQuery.reason });
+  }
+  if (dropped.length > 0 && kept.length > 0) {
+    queries = kept;
+  } else if (queries.length > 0 && kept.length === 0) {
+    deps.emit.emit("warning", { message: `Relevance gate dropped all queries for "${preview(query)}"; running ungated plan.` });
+  }
+
   for (const q of queries) if (!state.coveredQueries.includes(q.query)) state.coveredQueries.push(q.query);
   deps.emit.emit("research.plan.completed", { queries });
 
@@ -263,6 +349,8 @@ async function research(args: {
     deps,
     state,
     innerConcurrency,
+    seedTopic: args.seedTopic,
+    entities: args.entities,
   });
 }
 
@@ -373,6 +461,9 @@ export async function runResearch(input: DeepResearchInput, deps: Partial<Deps> 
   };
 
   const context = buildResearchContext(input.query, input.clarificationAnswers ?? []);
+  // Fix 1 — the article's proper nouns are extracted once here and passed into
+  // every query/angle generation prompt so generated searches stay on-topic.
+  const entities = extractEntities(context);
   const state: ResearchState = { learnings: [], visitedUrls: [], coveredQueries: [], sourceDates: {} };
   fullDeps.emit.emit("research.started", { query: input.query, breadth: input.breadth, depth: input.depth, mode: input.mode });
 
@@ -381,7 +472,7 @@ export async function runResearch(input: DeepResearchInput, deps: Partial<Deps> 
     let plan: { threads: string[]; independent: boolean };
     try {
       plan = await structured(fullDeps, {
-        prompt: subQuestionPrompt(context),
+        prompt: subQuestionPrompt(context, entities),
         parser: parseSubQuestionPlan,
         purpose: "identify_sub_questions",
       });
@@ -407,6 +498,8 @@ export async function runResearch(input: DeepResearchInput, deps: Partial<Deps> 
               deps: fullDeps,
               state,
               innerConcurrency: 1, // shared budget: threads must not multiply the pool
+              seedTopic: context,
+              entities,
             }),
         ),
         SEARCH_CONCURRENCY,
@@ -420,6 +513,8 @@ export async function runResearch(input: DeepResearchInput, deps: Partial<Deps> 
         deps: fullDeps,
         state,
         innerConcurrency: SEARCH_CONCURRENCY,
+        seedTopic: context,
+        entities,
       });
     }
 

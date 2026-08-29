@@ -5,17 +5,24 @@ export function planPrompt(
   breadth: number,
   learnings: Learning[] = [],
   coveredQueries: string[] = [],
+  entities: string[] = [],
 ): string {
   const prior = learnings.map((learning) => learning.text).filter(Boolean).join("\n");
   const covered = coveredQueries.filter(Boolean).join("\n- ");
   const coveredSection = covered
     ? `\n\nAlready searched (do NOT repeat these — focus on genuinely new ground):\n- ${covered}`
     : "";
-  return `Generate up to ${breadth} distinct web search queries. Return only JSON: {"queries":[{"query":"...","researchGoal":"..."}]}.\n\nTask:\n${query}\n\nPrior findings:\n${prior || "(none yet)"}${coveredSection}\n\nDo not repeat searches substantially similar to the covered queries above.`;
+  const entityList = entities.length ? `\n\nKey entities in this article:\n- ${entities.join("\n- ")}` : "";
+  return `Generate up to ${breadth} distinct web search queries. Return only JSON: {"queries":[{"query":"...","researchGoal":"..."}]}.\n\nTask:\n${query}\n\nPrior findings:\n${prior || "(none yet)"}${coveredSection}${entityList}\n\nEvery query must reference at least one of these entities, or be a direct comparative/competitive query naming the same industry/space the article is about (e.g. "find competitors to one of these entities"). Never generate a query about an unrelated product category, industry, or topic with no connection to these entities.\n\nDo not repeat searches substantially similar to the covered queries above.`;
 }
 
-export function subQuestionPrompt(query: string): string {
-  return `Determine whether this research request decomposes into 2-3 GENUINELY INDEPENDENT research angles (each answerable without needing the others' findings first). If yes, return {"independent":true,"threads":["angle 1","angle 2","angle 3"]}. If the subtasks are dependent or sequential (each builds on the previous), return {"independent":false,"query":"<the request unchanged>"}.\n\nRequest:\n${query}\n\nReturn only JSON.`;
+export function subQuestionPrompt(query: string, entities: string[] = []): string {
+  const entityList = entities.length ? `\n\nKey entities in this article:\n- ${entities.join("\n- ")}` : "";
+  return `Determine whether this research request decomposes into 2-3 GENUINELY INDEPENDENT research angles (each answerable without needing the others' findings first). If yes, return {"independent":true,"threads":["angle 1","angle 2","angle 3"]}. If the subtasks are dependent or sequential (each builds on the previous), return {"independent":false,"query":"<the request unchanged>"}.${entityList}
+
+Every generated angle must reference at least one of these entities, or be a direct comparative/competitive angle naming the same industry/space the request is about. Never generate an angle about an unrelated product category, industry, or topic with no connection to these entities.
+
+Request:\n${query}\n\nReturn only JSON.`;
 }
 
 export function clarificationPrompt(query: string): string {
