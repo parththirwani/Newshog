@@ -2,23 +2,19 @@ import { NextResponse } from "next/server";
 import { prisma } from "@newshog/db";
 import { getAnalyzeQueue } from "@newshog/queue";
 import { requireQuotaUser } from "@/lib/pro-gate";
-
-function isValidUrl(raw: string): boolean {
-  try {
-    const parsed = new URL(raw);
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
+import { guard } from "@/lib/rate-limit";
+import { parseBody, DeepAnalyzeBodySchema } from "@/lib/schemas";
 
 export async function POST(request: Request) {
+  // A.1: 5/min/IP before quota, DB, or enqueue — deep runs burn LLM cost.
+  const limited = await guard(request, "analyze-deep");
+  if (!limited.allowed) return limited.response;
+
   try {
-    const body = await request.json();
-    const { url } = body as { url?: string };
-    if (!url || typeof url !== "string" || !isValidUrl(url)) {
-      return NextResponse.json({ error: "Invalid URL. Provide a valid http(s) URL." }, { status: 400 });
-    }
+    // A.4: strict zod shape + body cap.
+    const parsed = await parseBody(request, DeepAnalyzeBodySchema);
+    if (!parsed.ok) return parsed.response;
+    const { url } = parsed.data;
 
     // Deep Research spends real LLM + network budget, so the deep_research
     // quota is enforced here before anything is enqueued. Anonymous callers

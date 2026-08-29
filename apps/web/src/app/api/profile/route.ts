@@ -5,7 +5,7 @@ import { summarizeIndividualProfile, summarizeCompanyProfile } from "@/lib/summa
 import { fetchXProfile } from "@/lib/x-api";
 import { fetchLinkedInProfile, linkedinProfileText } from "@/lib/linkedin";
 import { crawlCompanySite } from "@/lib/crawl";
-import type { ProfileType } from "@newshog/shared";
+import { parseBody, ProfileCreateBodySchema, ProfileUpdateBodySchema } from "@/lib/schemas";
 import { trackServer } from "@/lib/analytics";
 
 async function requireUser() {
@@ -61,11 +61,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
 
-  const body = await request.json();
-  const type = body.type as ProfileType | undefined;
-  if (type !== "individual" && type !== "enterprise") {
-    return NextResponse.json({ error: "type must be 'individual' or 'enterprise'." }, { status: 400 });
-  }
+  // A.4: strict zod shape + 2MB body cap (accommodates pdfText extracted from
+  // the 10MB-capped upload) before any scrape, LLM call, or DB write.
+  const parsed = await parseBody(request, ProfileCreateBodySchema, { maxBytes: 2 * 1024 * 1024 });
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
+  const type = body.type;
 
   const existing = await prisma.profile.findUnique({ where: { userId: user.id } });
   if (existing) {
@@ -173,7 +174,11 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "No profile found. Use POST to create." }, { status: 404 });
   }
 
-  const body = await request.json();
+  // A.4: same fields as create, all optional (partial update); deliberately
+  // non-strict so older clients that still POST `type` keep working.
+  const parsed = await parseBody(request, ProfileUpdateBodySchema, { maxBytes: 2 * 1024 * 1024 });
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   try {
     if (existing.type === "individual") {
@@ -225,7 +230,7 @@ export async function PUT(request: Request) {
       websiteRawText = await crawlCompanySite(urlsToCrawl);
     }
 
-    const descriptionText = [companyDescription, pdfText && `\n\nPDF content:\n${pdfText}`].filter(Boolean).join("\n") || companyName || existing.enterprise?.companyName;
+    const descriptionText = [companyDescription, pdfText && `\n\nPDF content:\n${pdfText}`].filter(Boolean).join("\n") || companyName || existing.enterprise?.companyName || "";
     const companyContext = await summarizeCompanyProfile(descriptionText, websiteRawText);
 
     const profile = await prisma.enterpriseProfile.update({

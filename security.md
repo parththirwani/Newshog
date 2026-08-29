@@ -105,3 +105,28 @@ This plan sits **in front of and alongside** the existing usage-quota/Stripe bil
 | A | Before launch | Rate limiting, SSRF, webhook auth, input validation, headers, secrets, spend ceiling | **Yes — cannot deploy without this** |
 | B | First days live | Prompt injection defense, anon-abuse logging, cost-bomb guard, basic alerting | No, but ship fast |
 | C | Weeks 2–4 | WAF, DB contention, IP backstop, ongoing dependency review | No — traffic-informed, may defer indefinitely |
+
+---
+
+## Phase A — implementation status (2026-08-29)
+
+All code items shipped; tests green (web 226, worker 146, deep-research 51), `next build` clean, `bun audit` clean.
+
+| Item | State |
+|---|---|
+| A.1 | ✅ `@upstash/ratelimit` (REST) in `apps/web/src/lib/rate-limit.ts`, `guard()` before any DB/quota work on analyze (20/min), analyze/deep + deep-research + prepare (5/min), auth request (3/hr/IP **and** /email-hashed), verify (10/hr/IP + 5/hr failed-per-email), events (60/min). Hybrid failure: **fail-closed (503 `ratelimit_unavailable`)** on cost/auth routes, **fail-open** on telemetry; every error branch logs `[security] ratelimit_*` for the B.4 alert hook |
+| A.2 | ✅ `safeFetchText` in `packages/shared/src/safe-fetch.ts` (subpath export — kept out of the client barrel). Private/reserved-IP rejection (v4, v6, mapped, NAT64/6to4/Teredo), manual per-hop redirect re-validation, 5MB cap. **Node:** undici connector `lookup` re-validates at socket time (rebinding-proof, verified firing per redirect hop). **Bun (worker):** pre-validation only — see tradeoffs. Adopted by `Scrape.ts` + `crawl.ts`; `r.jina.ai` mirror fetch intentionally exempt (egress originates at Jina, not our infra) |
+| A.3 | ✅ Stripe `constructEvent` verified in place. **Mailgun webhook: N/A** — inbound email is IMAP polling (`apps/worker/src/email-fetch.ts`), no webhook exists to sign |
+| A.4 | ✅ zod strict schemas + streamed 64KB body cap (2MB for profile `pdfText`) on analyze, analyze/deep, deep-research, prepare, auth request/verify, profile POST/PUT. Uniform 400/413 `invalid_request` shapes |
+| A.5 | ✅ `next.config.ts` `headers()`: HSTS, nosniff, X-Frame-Options DENY, CSP (frame-ancestors 'none', object-src 'none', connect/form/base self), Referrer-Policy, Permissions-Policy. No `Access-Control-Allow-*` anywhere (same-origin). Session + anon cookies now explicit `secure` |
+| A.6 | ✅ single-use + 15-min expiry + non-enumerating responses (already in place) **+ attempt limits from A.1** close the 6-digit brute-force |
+| A.7 | ✅ `SESSION_SECRET` fail-fast (throws at first signing op in prod if missing/too-short; lazy so builds/tests don't need it). `bun audit` clean via overrides (postcss/deepmerge-ts/sharp bumps); dead `@mozilla/readability` removed from worker. `.env` confirmed never in git history |
+| A.8 | ⬜ **Ops-only, still open before launch:** set hard spend cap/alert on the **OpenRouter** account (primary LLM path — `OPENROUTER_API_KEY`), plus Anthropic direct if used. `UPSTASH_REDIS_REST_URL`/`_TOKEN` must be configured in Vercel env — fail-closed means the paid routes 503 without them |
+
+### Accepted tradeoffs (deliberate, revisit with data)
+
+- **`auth-verify` 10/hr/IP**: shared-NAT (office/campus) users verifying several accounts can collide before the per-email cap binds. Ship as-is; revisit if support tickets appear.
+- **Bun worker SSRF: no socket pinning** — undici's Agent is non-functional under Bun (probed); per-hop pre-validation only. Residual TTL-0 rebinding race is milliseconds wide, on the worker's isolated compose network.
+- **CSP `script-src 'unsafe-inline'`**: App Router bakes inline flight scripts into *statically prerendered* pages; a per-request nonce can't reach build-time HTML without abandoning prerendering. Non-negotiables (no framing/objects, self-only connect/base/form) are enforced regardless.
+- **Per-email failed-verify counter can lock an email's login for <1h** — accepted alongside the enumeration-protection it provides; response shapes stay identical.
+- **Postgres quota is the backstop under the limiter** — fail-closed here means "reject fast", not "no defense exists".

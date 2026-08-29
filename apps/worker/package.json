@@ -8,7 +8,6 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@mozilla/readability": "^0.5",
     "@newshog/db": "workspace:*",
     "@newshog/deep-research": "workspace:*",
     "@newshog/queue": "workspace:*",

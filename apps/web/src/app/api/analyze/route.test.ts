@@ -63,10 +63,10 @@ vi.mock("@/lib/analytics", () => ({ trackServer: vi.fn() }));
 // Real-rate-limit module keeps per-process bucket state that leaks across
 // tests; stub it so every POST counts as allowed.
 vi.mock("@/lib/rate-limit", () => ({
-  rateLimit: () => ({ ok: true, remaining: 9, retryAfter: 0 }),
+  guard: () => Promise.resolve({ allowed: true }),
   clientIp: () => "test",
-  ANALYZE_RATE_LIMIT: 10,
-  ANALYZE_WINDOW_MS: 60 * 60 * 1000,
+  hashScope: (v: string) => v,
+  __setLimiterFactoryForTests: () => {},
 }));
 
 const { POST } = await import("./route");

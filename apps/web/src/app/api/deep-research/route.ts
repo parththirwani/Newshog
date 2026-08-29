@@ -3,8 +3,14 @@ import { prisma } from "@newshog/db";
 import { DEEP_RESEARCH_QUEUE, getDeepResearchQueue } from "@newshog/queue";
 import { validateClarificationAnswers } from "@newshog/deep-research";
 import { requireQuotaUser } from "@/lib/pro-gate";
+import { guard } from "@/lib/rate-limit";
+import { parseBody, DeepResearchBodySchema } from "@/lib/schemas";
 
 export async function POST(request: Request) {
+  // A.1: 5/min/IP before anything else — runs burn LLM + scrape budget.
+  const limited = await guard(request, "deep-research");
+  if (!limited.allowed) return limited.response;
+
   // Deep Research spends real LLM + network budget (search/scrape), so it's
   // quota-gated even on the standalone tool routes — not just /api/analyze/deep.
   // The consuming check runs after the cheap field validation (below) so a
@@ -12,39 +18,19 @@ export async function POST(request: Request) {
   // any prepare-session write, run creation, or enqueue — a denied request
   // never consumes a clarification prepare_session or enqueues a job.
   try {
-    const body = await request.json();
+    // A.4: strict zod shape (query/depth/breadth/mode + prepare-session
+    // fields) with a 64KB body cap, before any DB write or quota consume.
+    const parsed = await parseBody(request, DeepResearchBodySchema);
+    if (!parsed.ok) return parsed.response;
     const {
-      query,
-      depth = 2,
-      breadth = 3,
-      mode = "answer",
+      query: q,
+      depth,
+      breadth,
+      mode,
       prepareSessionId,
-      skipClarification = false,
-    } = body as {
-      query?: string;
-      depth?: number;
-      breadth?: number;
-      mode?: string;
-      prepareSessionId?: string;
-      skipClarification?: boolean;
-    };
-
-    let clarificationAnswers: unknown[] = [];
-    if (Array.isArray(body.clarificationAnswers)) clarificationAnswers = body.clarificationAnswers;
-
-    const q = typeof query === "string" ? query.trim() : "";
-    if (!q || q.length > 8000) {
-      return NextResponse.json({ error: "query must be a string between 1 and 8000 characters." }, { status: 400 });
-    }
-    if (!Number.isInteger(depth) || depth < 1 || depth > 4) {
-      return NextResponse.json({ error: "depth must be an integer between 1 and 4." }, { status: 400 });
-    }
-    if (!Number.isInteger(breadth) || breadth < 1 || breadth > 6) {
-      return NextResponse.json({ error: "breadth must be an integer between 1 and 6." }, { status: 400 });
-    }
-    if (mode !== "answer" && mode !== "report") {
-      return NextResponse.json({ error: "mode must be answer or report." }, { status: 400 });
-    }
+      skipClarification,
+      clarificationAnswers,
+    } = parsed.data;
 
     // Ownership anchor for DeepResearchRun: standalone runs belong to the
     // creating user, so the run-level endpoints ([runId] read/cancel, events)

@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@newshog/db";
 import { isValidEventName, pruneProps, MAX_EVENT_NAME_LEN } from "@/lib/analytics";
-import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { guard } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
-  const ip = clientIp(request);
-  const gate = rateLimit(`events:${ip}`, 60, 60_000);
-  if (!gate.ok) {
-    return NextResponse.json({ error: "Too many requests." }, { status: 429 });
-  }
+  // A.1: 60/min/IP on telemetry — fail-OPEN policy (see rate-limit.ts): a
+  // limiter outage must never take the product down over analytics.
+  const limited = await guard(request, "events");
+  if (!limited.allowed) return limited.response;
 
   const body = await request.json().catch(() => null);
   const name = body?.name;

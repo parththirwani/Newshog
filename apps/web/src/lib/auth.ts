@@ -7,10 +7,29 @@ const ANON_COOKIE = "anon_id";
 // ponytail: HMAC-signed email-in-cookie, no session store. Bearer-valid until
 // the 30-day maxAge or SESSION_SECRET rotation; no per-device logout or
 // invalidation. Upgrade path: opaque tokens in a sessions table + revoke.
-const secret = process.env.SESSION_SECRET ?? crypto.randomBytes(32);
+//
+// A.7: SESSION_SECRET is REQUIRED in production — checked lazily (not at
+// import) so `next build` / tests don't need it, but every prod signing
+// operation fails loudly instead of silently minting a per-process key that
+// would invalidate all sessions on the next deploy.
+let devEphemeralSecret: Buffer | null = null;
+function signingKey(): Buffer {
+  const raw = process.env.SESSION_SECRET;
+  if (raw) {
+    if (process.env.NODE_ENV === "production" && raw.length < 32) {
+      throw new Error("SESSION_SECRET is too short for production (min 32 chars)");
+    }
+    return Buffer.from(raw);
+  }
+  if (process.env.NODE_ENV === "production" && process.env.VITEST !== "true") {
+    throw new Error("SESSION_SECRET is required in production");
+  }
+  devEphemeralSecret ??= crypto.randomBytes(32);
+  return devEphemeralSecret;
+}
 
 export function sign(value: string): string {
-  return crypto.createHmac("sha256", secret).update(value).digest("base64url");
+  return crypto.createHmac("sha256", signingKey()).update(value).digest("base64url");
 }
 
 export function verifySigned(raw: string): string | null {
@@ -28,6 +47,9 @@ export function sessionCookie(email: string) {
     name: SESSION_COOKIE,
     value: `${email}.${sign(email)}`,
     httpOnly: true,
+    // A.5: explicit HTTPS-only cookie. Browsers exempt http://localhost,
+    // so dev is unaffected.
+    secure: true,
     path: "/",
     maxAge: 60 * 60 * 24 * 30, // 30 days
     sameSite: "lax" as const,
@@ -58,6 +80,7 @@ export function anonIdCookie(id: string) {
     name: ANON_COOKIE,
     value: `${id}.${sign(id)}`,
     httpOnly: true,
+    secure: true,
     path: "/",
     maxAge: 60 * 60 * 24 * 365,
     sameSite: "lax" as const,

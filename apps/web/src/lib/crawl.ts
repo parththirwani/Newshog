@@ -1,8 +1,10 @@
-// ponytail: simple fetch + Readability, no retry, no JS rendering.
+// SSRF-safe fetch + Readability (security.md A.2): private-IP rejection,
+// per-hop redirect re-validation, IP pinning on Node, 10s timeout, 5MB cap.
 // Upgrade: headless browser if landing pages return empty text.
 
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
+import { safeFetchText } from "@newshog/shared/safe-fetch";
 
 const MAX_CHARS = 10000;
 
@@ -11,14 +13,10 @@ export async function crawlCompanySite(urls: string[]): Promise<string> {
 
   for (const url of urls) {
     try {
-      const res = await fetch(url, {
-        headers: { "User-Agent": "NewshogBot/1.0 (company profile crawl)" },
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!res.ok) continue;
+      const fetched = await safeFetchText(url);
+      if (!fetched.ok) continue;
 
-      const html = await res.text();
-      const dom = new JSDOM(html, { url });
+      const dom = new JSDOM(fetched.body, { url: fetched.finalUrl });
       const doc = new dom.window.HTMLDocument();
       const article = new Readability(doc).parse();
       if (article?.textContent) {

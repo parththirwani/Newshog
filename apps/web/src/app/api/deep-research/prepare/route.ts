@@ -2,8 +2,15 @@ import { NextResponse } from "next/server";
 import { prisma } from "@newshog/db";
 import { createEventEmitter, createOpenRouterHandler, generateClarificationQuestions } from "@newshog/deep-research";
 import { requireQuotaUser } from "@/lib/pro-gate";
+import { guard } from "@/lib/rate-limit";
+import { parseBody, PrepareBodySchema } from "@/lib/schemas";
 
 export async function POST(request: Request) {
+  // A.1: 5/min/IP — prepare spends a live LLM call, so it gets the same
+  // trigger-route limit, enforced before the quota read and the call.
+  const limited = await guard(request, "deep-research-prepare");
+  if (!limited.allowed) return limited.response;
+
   // /prepare spends a live LLM call, so it's quota-gated like the trigger
   // routes — but NON-CONSUMING. The user walks the multi-step clarification
   // flow here and only the trigger (/api/deep-research, /api/analyze/deep)
@@ -17,12 +24,10 @@ export async function POST(request: Request) {
   if (!gate.ok) return gate.response;
 
   try {
-    const body = await request.json();
-    const { query } = body as { query?: string };
-    const q = typeof query === "string" ? query.trim() : "";
-    if (!q || q.length > 8000) {
-      return NextResponse.json({ error: "query must be a string between 1 and 8000 characters." }, { status: 400 });
-    }
+    // A.4: strict zod shape + body cap before the LLM call.
+    const parsed = await parseBody(request, PrepareBodySchema);
+    if (!parsed.ok) return parsed.response;
+    const { query: q } = parsed.data;
 
     const controller = new AbortController();
     const runId = crypto.randomUUID();

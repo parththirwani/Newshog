@@ -1,5 +1,6 @@
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
+import { safeFetchText } from "@newshog/shared/safe-fetch";
 
 export const MAX_MARKDOWN_LENGTH = 25_000;
 
@@ -82,35 +83,21 @@ async function scrapeViaMirror(url: string, fallback: { status: number; statusTe
 }
 
 export async function scrapeArticle(url: string): Promise<ScrapeResult> {
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-      Accept:
-        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-      "Accept-Language": "en-US,en;q=0.9",
-      "Cache-Control": "no-cache",
-      Pragma: "no-cache",
-      "Sec-Fetch-Site": "none",
-      "Sec-Fetch-Mode": "navigate",
-      "Sec-Fetch-User": "?1",
-      "Upgrade-Insecure-Requests": "1",
-    },
-    signal: AbortSignal.timeout(15_000),
-    redirect: "follow",
-  });
+  // safeFetchText (security.md A.2): http(s)-only, private-IP DNS rejection,
+  // per-hop redirect re-validation, IP pinning on Node, 15s timeout, 5MB cap.
+  const fetched = await safeFetchText(url, { timeoutMs: 15_000 });
 
-  if (!res.ok) {
+  if (!fetched.ok) {
     // Publisher gate (bot challenge / paywall) — try a rendered mirror before
     // giving up. The mirror returns plain text, so we can't use Readability.
     try {
-      return await scrapeViaMirror(url, res);
+      return await scrapeViaMirror(url, { status: fetched.status, statusText: fetched.statusText });
     } catch {
-      throw new Error(`Fetch failed: ${res.status} ${res.statusText}`);
+      throw new Error(`Fetch failed: ${fetched.status} ${fetched.statusText}`);
     }
   }
 
-  return scrapeHtml(await res.text(), url);
+  return scrapeHtml(fetched.body, fetched.finalUrl);
 }
 
 /**

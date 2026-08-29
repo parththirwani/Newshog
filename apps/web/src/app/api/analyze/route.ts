@@ -1,27 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@newshog/db";
 import { getAnalyzeQueue, ANALYZE_QUEUE } from "@newshog/queue";
-import {
-  rateLimit,
-  clientIp,
-  ANALYZE_RATE_LIMIT,
-  ANALYZE_WINDOW_MS,
-} from "@/lib/rate-limit";
+import { guard } from "@/lib/rate-limit";
 import { getSessionUser, getAnonId, anonIdCookie } from "@/lib/auth";
 import { checkAndConsumeQuota, getQuotaStatus } from "@/lib/usage";
 import { quotaDeniedResponse } from "@/lib/pro-gate";
 import { trackServer } from "@/lib/analytics";
 import { normalizeUrl } from "@/lib/url";
+import { parseBody, AnalyzeBodySchema } from "@/lib/schemas";
 import { ANALYSIS_DEDUPE_HOURS } from "@newshog/shared";
-
-function isValidUrl(raw: string): boolean {
-  try {
-    const parsed = new URL(raw);
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
 
 function withAnonCookie(res: NextResponse, cookie: ReturnType<typeof anonIdCookie> | null) {
   if (cookie) res.cookies.set(cookie);
@@ -29,24 +16,17 @@ function withAnonCookie(res: NextResponse, cookie: ReturnType<typeof anonIdCooki
 }
 
 export async function POST(request: Request) {
-  // ponytail: in-memory per-process token bucket (10/hr/key). Single-node
-  // ceiling; swap to the redis in packages/queue (createConnection) in
-  // Phase 8 when the web app runs more than one instance.
-  const gate = rateLimit(`analyze:${clientIp(request)}`, ANALYZE_RATE_LIMIT, ANALYZE_WINDOW_MS);
-  if (!gate.ok) {
-    return NextResponse.json(
-      { error: "Too many analyses. Try again later." },
-      { status: 429, headers: { "Retry-After": String(gate.retryAfter) } },
-    );
-  }
+  // Upstash sliding-window IP limit (A.1) — runs before any DB write, quota
+  // consume, or enqueue. 429 { error: "rate_limited" } is distinct from the
+  // quota layer's 429 { error: "quota_exceeded" }.
+  const limited = await guard(request, "analyze");
+  if (!limited.allowed) return limited.response;
 
   try {
-    const body = await request.json();
-    const { url, profileId } = body as { url?: string; profileId?: string };
-
-    if (!url || typeof url !== "string" || !isValidUrl(url)) {
-      return NextResponse.json({ error: "Invalid URL. Provide a valid http(s) URL." }, { status: 400 });
-    }
+    // A.4: strict zod shape + 64KB body cap before any DB work.
+    const parsed = await parseBody(request, AnalyzeBodySchema);
+    if (!parsed.ok) return parsed.response;
+    const { url, profileId } = parsed.data;
 
     const normalizedUrl = normalizeUrl(url);
 

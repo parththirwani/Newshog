@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextResponse } from "next/server";
 
 const prismaMock = {
   event: { create: vi.fn() },
 };
 
 const rateGate = vi.hoisted(() => ({
-  rateLimit: vi.fn(() => ({ ok: true, remaining: 10, retryAfter: 0 })),
+  guard: vi.fn(() => Promise.resolve({ allowed: true })),
 }));
 
 vi.mock("@newshog/db", () => ({ prisma: prismaMock }));
@@ -13,7 +14,7 @@ vi.mock("@/lib/rate-limit", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/rate-limit")>();
   return {
     ...actual,
-    rateLimit: rateGate.rateLimit,
+    guard: rateGate.guard,
   };
 });
 
@@ -30,7 +31,7 @@ function makeRequest(body: unknown) {
 describe("POST /api/events", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    rateGate.rateLimit.mockReturnValue({ ok: true, remaining: 10, retryAfter: 0 });
+    rateGate.guard.mockResolvedValue({ allowed: true });
   });
 
   it("records a whitelisted event", async () => {
@@ -56,7 +57,10 @@ describe("POST /api/events", () => {
   });
 
   it("returns 429 when rate limited", async () => {
-    rateGate.rateLimit.mockReturnValue({ ok: false, remaining: 0, retryAfter: 12 });
+    rateGate.guard.mockResolvedValue({
+      allowed: false,
+      response: NextResponse.json({ error: "rate_limited", code: "rate_limited", retryAfter: 12 }, { status: 429 }),
+    } as never);
     const response = await POST(makeRequest({ name: "pitch_copied" }));
     expect(response.status).toBe(429);
     expect(prismaMock.event.create).not.toHaveBeenCalled();
