@@ -2,12 +2,13 @@ node_modules
 .next
 dist
 .turbo
+.opencode/
+docs/
 .env
 .env.local
 *.log
 *.tsbuildinfo
 .DS_Store
-implementation.md
 
 # Prisma generated client
 packages/db/generated/

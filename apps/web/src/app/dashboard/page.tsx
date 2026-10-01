@@ -6,6 +6,7 @@ import { AppShell } from "@/components/app/AppShell";
 import { ScoreRing } from "@/components/app/ScoreRing";
 import { DashboardAnalyze } from "./DashboardAnalyze";
 import { SCORE_THRESHOLD_HIGH } from "@newshog/shared";
+import { formatAbsoluteDateTime } from "@/lib/result-utils";
 
 const PAGE_SIZE = 20;
 
@@ -151,7 +152,7 @@ export default async function DashboardPage({
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(a.createdAt).toLocaleString()}
+                      {formatAbsoluteDateTime(a.createdAt.toISOString())}
                     </p>
                   </div>
                   {a.score != null ? (
