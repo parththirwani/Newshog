@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { fileURLToPath } from "url";
 
 const csp = [
   "default-src 'self'",
@@ -17,9 +18,13 @@ const csp = [
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@newshog/db", "@newshog/queue"],
+  outputFileTracingRoot: fileURLToPath(new URL("../../", import.meta.url)),
   // ponytail: bullmq optionally imports @valkey/valkey-glide which isn't
   // installed — suppress the dev-server compilation warning.
   serverExternalPackages: ["@valkey/valkey-glide"],
+  outputFileTracingIncludes: {
+    "/*": ["../../prompts/**/*"],
+  },
   webpack(config) {
     config.resolve.alias = {
       ...(config.resolve.alias ?? {}),
