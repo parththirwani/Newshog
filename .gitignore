@@ -11,3 +11,5 @@ implementation.md
 
 # Prisma generated client
 packages/db/generated/
+.vercel
+.env*

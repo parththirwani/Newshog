@@ -1,5 +1,32 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalEnv": [
+    "DATABASE_URL",
+    "DIRECT_URL",
+    "REDIS_URL",
+    "UPSTASH_REDIS_REST_URL",
+    "UPSTASH_REDIS_REST_TOKEN",
+    "OPENROUTER_API_KEY",
+    "SESSION_SECRET",
+    "RESEND_API_KEY",
+    "AUTH_EMAIL_FROM",
+    "BILLING_EMAIL_FROM",
+    "IMAP_HOST",
+    "IMAP_PORT",
+    "IMAP_USER",
+    "IMAP_PASS",
+    "APIFY_TOKEN",
+    "X_API_KEY",
+    "STRIPE_SECRET_KEY",
+    "STRIPE_WEBHOOK_SECRET",
+    "STRIPE_PRICE_ID",
+    "NEXT_PUBLIC_SITE_URL",
+    "NEXT_PUBLIC_MEDIALYST_URL",
+    "JINA_API_KEY",
+    "ENABLE_PRO_GATING",
+    "DDG_SEARCH_URL",
+    "MAX_RUN_TOKENS"
+  ],
   "tasks": {
     "dev": {
       "cache": false,

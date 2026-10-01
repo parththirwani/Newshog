@@ -1,0 +1,48 @@
+services:
+  - type: worker
+    name: newshog-worker
+    runtime: docker
+    dockerfilePath: ./apps/worker/Dockerfile
+    autoDeploy: true
+    plan: starter
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: AUTH_EMAIL_FROM
+        sync: false
+      - key: BILLING_EMAIL_FROM
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_ID
+        sync: false
+      - key: APIFY_TOKEN
+        sync: false
+      - key: X_API_KEY
+        sync: false
+      - key: IMAP_HOST
+        sync: false
+      - key: IMAP_PORT
+        sync: false
+      - key: IMAP_USER
+        sync: false
+      - key: IMAP_PASS
+        sync: false
+      - key: NEXT_PUBLIC_MEDIALYST_URL
+        sync: false
+      - key: JINA_API_KEY
+        sync: false
+      - key: ENABLE_PRO_GATING
+        value: "true"
