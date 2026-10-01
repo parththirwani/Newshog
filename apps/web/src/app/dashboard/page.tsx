@@ -3,10 +3,10 @@ import { redirect } from "next/navigation";
 import { prisma } from "@newshog/db";
 import { getSessionUser } from "@/lib/auth";
 import { AppShell } from "@/components/app/AppShell";
+import { LocalDateTime } from "@/components/app/LocalDateTime";
 import { ScoreRing } from "@/components/app/ScoreRing";
 import { DashboardAnalyze } from "./DashboardAnalyze";
 import { SCORE_THRESHOLD_HIGH } from "@newshog/shared";
-import { formatAbsoluteDateTime } from "@/lib/result-utils";
 
 const PAGE_SIZE = 20;
 
@@ -49,6 +49,7 @@ export default async function DashboardPage({
           score: true,
           status: true,
           createdAt: true,
+          updatedAt: true,
           researchRunId: true,
         },
       }),
@@ -152,7 +153,7 @@ export default async function DashboardPage({
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {formatAbsoluteDateTime(a.createdAt.toISOString())}
+                      <LocalDateTime iso={(a.updatedAt ?? a.createdAt).toISOString()} />
                     </p>
                   </div>
                   {a.score != null ? (
