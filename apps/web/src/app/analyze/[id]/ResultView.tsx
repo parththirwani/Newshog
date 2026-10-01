@@ -8,7 +8,7 @@ import { SiteHeader } from "@/components/landing/SiteHeader";
 import { SiteFooter } from "@/components/landing/SiteFooter";
 import { AppShell } from "@/components/app/AppShell";
 import type { Analysis, Angle, AnalysisJournalistMatch, ContentKind } from "@newshog/shared";
-import { relativeTime, nextAction } from "@/lib/result-utils";
+import { relativeTime, nextAction, formatAbsoluteDateTime, formatAbsoluteDate } from "@/lib/result-utils";
 import type { StoryVelocity, CoverageSignal } from "@newshog/shared";
 import { ScoreRing } from "@/components/app/ScoreRing";
 import { trackClient } from "@/lib/analytics-client";
@@ -399,7 +399,7 @@ export function ResultView({
                   {analysis.articleTitle}
                 </h1>
                 <p className="mt-2 font-mono text-xs text-muted-foreground">
-                  Analyzed {analysis.updatedAt ? relativeTime(analysis.updatedAt) : "just now"}
+                  Analyzed {analysis.updatedAt ? `${relativeTime(analysis.updatedAt)} · ${formatAbsoluteDateTime(analysis.updatedAt)}` : "just now"}
                 </p>
               </div>
               <div className="flex shrink-0 flex-col items-end gap-3">
@@ -511,7 +511,7 @@ export function ResultView({
                         </p>
                         {m.journalistRequest.deadline && (
                           <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                            Due {new Date(m.journalistRequest.deadline).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
+                            Due {formatAbsoluteDate(m.journalistRequest.deadline)}
                           </span>
                         )}
                       </div>

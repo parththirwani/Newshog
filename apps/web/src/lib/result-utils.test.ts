@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { band, relativeTime, nextAction } from "./result-utils";
+import { band, relativeTime, nextAction, formatAbsoluteDateTime, formatAbsoluteDate } from "./result-utils";
 
 describe("band", () => {
   it("maps scores below low threshold to Skip", () => {
@@ -88,5 +88,15 @@ describe("nextAction", () => {
     expect(nextAction(45, 0, "breaking").timing).toBe("This week");
     expect(nextAction(45, 0, "standard").timing).toBe("This week");
     expect(nextAction(45, 0, "evergreen").timing).toBe("This week");
+  });
+});
+
+describe("absolute date formatting", () => {
+  it("formats a full date and time in the user's locale/time zone", () => {
+    expect(formatAbsoluteDateTime("2026-10-01T20:00:00Z")).toMatch(/2026|Oct|1/);
+  });
+
+  it("formats a full date in the user's locale/time zone", () => {
+    expect(formatAbsoluteDate("2026-10-01T20:00:00Z")).toMatch(/2026|Oct|1/);
   });
 });

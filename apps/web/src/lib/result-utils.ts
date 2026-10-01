@@ -15,6 +15,29 @@ export function relativeTime(iso: string, now = Date.now()): string {
   return `${Math.round(hours / 24)}d ago`;
 }
 
+function userTimeZone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    return undefined;
+  }
+}
+
+export function formatAbsoluteDateTime(iso: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: userTimeZone(),
+  }).format(new Date(iso));
+}
+
+export function formatAbsoluteDate(iso: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "long",
+    timeZone: userTimeZone(),
+  }).format(new Date(iso));
+}
+
 // Rule-based, not LLM: a deterministic read on the window is cheaper and
 // renders instantly, which the sequential-call alternative isn't.
 export interface NextAction {
