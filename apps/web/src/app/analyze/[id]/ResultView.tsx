@@ -571,7 +571,7 @@ export function ResultView({
 
                 <div className="mt-3">
                   {activeMeta && activeMeta.kind === activeKind && (activeMeta.fitAssessment === "stretch" || activeMeta.timeFraming === "resurfacing") && (
-                    <div className="mb-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
+                    <div className="mb-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-foreground dark:text-amber-200">
                       <span className="font-medium">
                         {activeMeta.fitAssessment === "stretch" ? "This angle is a stretch for your profile. " : ""}
                         {activeMeta.timeFraming === "resurfacing"
