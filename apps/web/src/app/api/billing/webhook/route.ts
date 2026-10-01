@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@newshog/db";
 import { getStripe } from "@/lib/stripe";
+import { sendBillingEmail } from "@/lib/email";
 import type Stripe from "stripe";
 
 // Tier changes happen ONLY here, driven by Stripe webhook events — there is
@@ -86,6 +87,17 @@ export async function POST(request: Request) {
                 stripeCurrentPeriodEnd: period?.end ?? null,
               },
             });
+            await sendBillingEmailSafe(
+              checkout.customer_details?.email || null,
+              userId,
+              "Your Newshog Pro plan is active",
+              [
+                "Your Newshog Pro subscription is active.",
+                "",
+                "You can now use Pro features from your dashboard.",
+                period?.end ? `Current billing period ends on ${period.end.toISOString().slice(0, 10)}.` : "",
+              ].filter(Boolean).join("\n"),
+            );
           }
         }
         break;
@@ -98,7 +110,13 @@ export async function POST(request: Request) {
         // paid. past_due is intentionally NOT a revert — dunning is still
         // retrying, so the user keeps Pro access in the grace period.
         if (sub.status === "canceled" || sub.status === "unpaid" || sub.status === "incomplete_expired") {
-          await revertUser(sub.id);
+          await revertUser(sub.id, {
+            subject: "Your Newshog Pro plan ended",
+            body:
+              sub.status === "incomplete_expired"
+                ? "Your Newshog Pro checkout did not complete, so the account stayed on the free plan."
+                : "Your Newshog Pro plan ended and the account is now back on the free plan.",
+          });
         } else {
           const user = await userBySubscription(sub.id);
           const period = periodDates(sub);
@@ -117,7 +135,10 @@ export async function POST(request: Request) {
 
       case "customer.subscription.deleted": {
         const sub = event.data.object as Stripe.Subscription;
-        await revertUser(sub.id);
+        await revertUser(sub.id, {
+          subject: "Your Newshog Pro plan was canceled",
+          body: "Your Newshog Pro plan was canceled and the account is now back on the free plan.",
+        });
         break;
       }
 
@@ -144,16 +165,28 @@ export async function POST(request: Request) {
 
 async function userBySubscription(subscriptionId: string) {
   if (!subscriptionId) return null;
-  return prisma.user.findUnique({ where: { stripeSubscriptionId: subscriptionId } });
+  return prisma.user.findUnique({ where: { stripeSubscriptionId: subscriptionId }, select: { id: true, email: true } });
 }
 
 // Cancel/expiry → back to free. Keeps the customer + period fields for
 // history/portal, clears the subscription id so it can be reused.
-async function revertUser(subscriptionId: string) {
+async function revertUser(subscriptionId: string, emailNotice?: { subject: string; body: string }) {
   const user = await userBySubscription(subscriptionId);
   if (!user) return;
   await prisma.user.update({
     where: { id: user.id },
     data: { tier: "free", stripeSubscriptionId: null },
   });
+  if (emailNotice) {
+    await sendBillingEmailSafe(user.email, user.id, emailNotice.subject, emailNotice.body);
+  }
+}
+
+async function sendBillingEmailSafe(email: string | null, userId: string, subject: string, text: string) {
+  if (!email) return;
+  try {
+    await sendBillingEmail(email, subject, text);
+  } catch (err) {
+    console.error("[api/billing/webhook] billing email failed:", { userId, email, subject, err });
+  }
 }

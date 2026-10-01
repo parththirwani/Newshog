@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+const sendBillingEmailMock = vi.fn();
+
 const stripeMock = vi.hoisted(() => ({
   webhooks: { constructEvent: vi.fn() },
   subscriptions: { retrieve: vi.fn() },
@@ -12,6 +14,10 @@ vi.mock("@/lib/stripe", () => ({
   getStripe: () => stripeMock,
   getPriceId: () => "price_123",
   billingConfigured: () => true,
+}));
+
+vi.mock("@/lib/email", () => ({
+  sendBillingEmail: sendBillingEmailMock,
 }));
 
 vi.mock("@newshog/db", () => ({ prisma: prismaMock }));
@@ -59,6 +65,7 @@ describe("POST /api/billing/webhook", () => {
     });
     prismaMock.user.findUnique.mockResolvedValue({ id: "u1", email: "u@test.com", tier: "pro" });
     prismaMock.user.update.mockResolvedValue({ id: "u1" });
+    sendBillingEmailMock.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -87,6 +94,7 @@ describe("POST /api/billing/webhook", () => {
       client_reference_id: "u1",
       customer: "cus_1",
       subscription: "sub_1",
+      customer_details: { email: "u@test.com" },
     };
     prismaMock.user.findUnique.mockResolvedValue({ id: "u1" } as never);
     stripeMock.subscriptions.retrieve.mockResolvedValue(subWithPeriod({}) as never);
@@ -104,6 +112,11 @@ describe("POST /api/billing/webhook", () => {
         stripeCurrentPeriodEnd: new Date(1789000000 * 1000),
       },
     });
+    expect(sendBillingEmailMock).toHaveBeenCalledWith(
+      "u@test.com",
+      "Your Newshog Pro plan is active",
+      expect.stringContaining("Newshog Pro subscription is active"),
+    );
   });
 
   it("tolerates a checkout for a user that no longer exists (no 500, no retry-loop)", async () => {
@@ -151,11 +164,19 @@ describe("POST /api/billing/webhook", () => {
     );
     const res = await post({});
     expect(res.status).toBe(200);
-    expect(prismaMock.user.findUnique).toHaveBeenCalledWith({ where: { stripeSubscriptionId: "sub_1" } });
+    expect(prismaMock.user.findUnique).toHaveBeenCalledWith({
+      where: { stripeSubscriptionId: "sub_1" },
+      select: { id: true, email: true },
+    });
     expect(prismaMock.user.update).toHaveBeenCalledWith({
       where: { id: "u1" },
       data: { tier: "free", stripeSubscriptionId: null },
     });
+    expect(sendBillingEmailMock).toHaveBeenCalledWith(
+      "u@test.com",
+      "Your Newshog Pro plan ended",
+      expect.stringContaining("stayed on the free plan"),
+    );
   });
 
   it("customer.subscription.updated refreshes the billing period without touching tier", async () => {
@@ -185,11 +206,17 @@ describe("POST /api/billing/webhook", () => {
     expect(res.status).toBe(200);
     expect(prismaMock.user.findUnique).toHaveBeenCalledWith({
       where: { stripeSubscriptionId: "sub_1" },
+      select: { id: true, email: true },
     });
     expect(prismaMock.user.update).toHaveBeenCalledWith({
       where: { id: "u1" },
       data: { tier: "free", stripeSubscriptionId: null },
     });
+    expect(sendBillingEmailMock).toHaveBeenCalledWith(
+      "u@test.com",
+      "Your Newshog Pro plan was canceled",
+      expect.stringContaining("back on the free plan"),
+    );
   });
 
   it("invoice.payment_failed does NOT revert the user (dunning retries first)", async () => {

@@ -120,7 +120,7 @@ export default function LoginPage() {
         ) : (
           <form onSubmit={handleVerify} className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Code sent to <span className="text-foreground">{email}</span>. Check your server console.
+              Code sent to <span className="text-foreground">{email}</span>. {process.env.NODE_ENV === "production" ? "Check your inbox." : "Check your inbox or the server console in local dev."}
             </p>
             <input
               type="text"

@@ -3,14 +3,27 @@ import crypto from "crypto";
 
 const SESSION_COOKIE = "session_email";
 const ANON_COOKIE = "anon_id";
+const secure = process.env.NODE_ENV === "production";
+const fallbackSecret = crypto.randomBytes(32).toString("hex");
 
 // ponytail: HMAC-signed email-in-cookie, no session store. Bearer-valid until
 // the 30-day maxAge or SESSION_SECRET rotation; no per-device logout or
 // invalidation. Upgrade path: opaque tokens in a sessions table + revoke.
-const secret = process.env.SESSION_SECRET ?? crypto.randomBytes(32);
+function authSecret(): string {
+  const secret = process.env.SESSION_SECRET;
+  if (secret) return secret;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("SESSION_SECRET is required in production.");
+  }
+  return fallbackSecret;
+}
 
 export function sign(value: string): string {
-  return crypto.createHmac("sha256", secret).update(value).digest("base64url");
+  return crypto.createHmac("sha256", authSecret()).update(value).digest("base64url");
+}
+
+export function hashLoginCode(email: string, code: string): string {
+  return crypto.createHash("sha256").update(`${email.toLowerCase()}\n${code}\n${authSecret()}`).digest("hex");
 }
 
 export function verifySigned(raw: string): string | null {
@@ -28,6 +41,7 @@ export function sessionCookie(email: string) {
     name: SESSION_COOKIE,
     value: `${email}.${sign(email)}`,
     httpOnly: true,
+    secure,
     path: "/",
     maxAge: 60 * 60 * 24 * 30, // 30 days
     sameSite: "lax" as const,
@@ -58,6 +72,7 @@ export function anonIdCookie(id: string) {
     name: ANON_COOKIE,
     value: `${id}.${sign(id)}`,
     httpOnly: true,
+    secure,
     path: "/",
     maxAge: 60 * 60 * 24 * 365,
     sameSite: "lax" as const,

@@ -1,5 +1,6 @@
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
+import { assertSafePublicHttpUrl } from "@newshog/shared";
 
 export const MAX_MARKDOWN_LENGTH = 25_000;
 
@@ -82,6 +83,7 @@ async function scrapeViaMirror(url: string, fallback: { status: number; statusTe
 }
 
 export async function scrapeArticle(url: string): Promise<ScrapeResult> {
+  assertSafePublicHttpUrl(url);
   const res = await fetch(url, {
     headers: {
       "User-Agent":

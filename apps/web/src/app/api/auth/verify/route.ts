@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@newshog/db";
-import { sessionCookie } from "@/lib/auth";
+import { hashLoginCode, sessionCookie } from "@/lib/auth";
 
 export async function POST(request: Request) {
   try {
-    const { email, code } = (await request.json()) as { email?: string; code?: string };
+    const body = await request.json().catch(() => null) as { email?: string; code?: string } | null;
+    const email = body?.email?.trim().toLowerCase();
+    const code = body?.code?.trim();
 
     if (!email || !code || typeof email !== "string" || typeof code !== "string") {
       return NextResponse.json({ error: "Email and code required." }, { status: 400 });
@@ -13,7 +15,7 @@ export async function POST(request: Request) {
     const token = await prisma.token.findFirst({
       where: {
         email,
-        code,
+        code: hashLoginCode(email, code),
         expiresAt: { gt: new Date() },
       },
       orderBy: { createdAt: "desc" },

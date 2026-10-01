@@ -31,3 +31,7 @@ export function clientIp(request: Request): string {
 
 export const ANALYZE_RATE_LIMIT = 10;
 export const ANALYZE_WINDOW_MS = 60 * 60 * 1000;
+export const DEEP_ANALYZE_RATE_LIMIT = 5;
+export const DEEP_ANALYZE_WINDOW_MS = 60 * 60 * 1000;
+export const AUTH_REQUEST_RATE_LIMIT = 3;
+export const AUTH_REQUEST_WINDOW_MS = 60 * 60 * 1000;

@@ -12,16 +12,7 @@ import { checkAndConsumeQuota, getQuotaStatus } from "@/lib/usage";
 import { quotaDeniedResponse } from "@/lib/pro-gate";
 import { trackServer } from "@/lib/analytics";
 import { normalizeUrl } from "@/lib/url";
-import { ANALYSIS_DEDUPE_HOURS } from "@newshog/shared";
-
-function isValidUrl(raw: string): boolean {
-  try {
-    const parsed = new URL(raw);
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
+import { ANALYSIS_DEDUPE_HOURS, assertSafePublicHttpUrl } from "@newshog/shared";
 
 function withAnonCookie(res: NextResponse, cookie: ReturnType<typeof anonIdCookie> | null) {
   if (cookie) res.cookies.set(cookie);
@@ -44,8 +35,14 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { url, profileId } = body as { url?: string; profileId?: string };
 
-    if (!url || typeof url !== "string" || !isValidUrl(url)) {
-      return NextResponse.json({ error: "Invalid URL. Provide a valid http(s) URL." }, { status: 400 });
+    if (!url || typeof url !== "string") {
+      return NextResponse.json({ error: "Invalid URL. Provide a public http(s) URL." }, { status: 400 });
+    }
+
+    try {
+      assertSafePublicHttpUrl(url);
+    } catch {
+      return NextResponse.json({ error: "Invalid URL. Provide a public http(s) URL." }, { status: 400 });
     }
 
     const normalizedUrl = normalizeUrl(url);

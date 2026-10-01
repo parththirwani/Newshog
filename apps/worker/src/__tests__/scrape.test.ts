@@ -116,6 +116,16 @@ describe("scrapeArticle", () => {
     );
   });
 
+  it("rejects localhost URLs before fetching", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(scrapeArticle("http://localhost:3000/private")).rejects.toThrow(
+      "Invalid URL. Provide a public http(s) URL.",
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("sends correct user-agent header", async () => {
     mockFetch(articleHtml("<p>content</p>"));
     const fetchSpy = vi.spyOn(globalThis, "fetch");

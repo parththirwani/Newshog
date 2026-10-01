@@ -3,6 +3,7 @@
 
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
+import { assertSafePublicHttpUrl } from "@newshog/shared";
 
 const MAX_CHARS = 10000;
 
@@ -11,6 +12,7 @@ export async function crawlCompanySite(urls: string[]): Promise<string> {
 
   for (const url of urls) {
     try {
+      assertSafePublicHttpUrl(url);
       const res = await fetch(url, {
         headers: { "User-Agent": "NewshogBot/1.0 (company profile crawl)" },
         signal: AbortSignal.timeout(10000),

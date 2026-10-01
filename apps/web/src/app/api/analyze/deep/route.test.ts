@@ -2,11 +2,20 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Controls the requireQuotaUser gate resolution. ok-based mock mirrors the
 // real helper: ok:true returns a user, ok:false returns a denial Response.
+const rateLimitMock = vi.hoisted(() => vi.fn(() => ({ ok: true, remaining: 4, retryAfter: 0 })));
+
 vi.mock("@/lib/pro-gate", () => ({
   requireQuotaUser: () =>
     gate.ok
       ? Promise.resolve({ ok: true, user: gate.user })
       : Promise.resolve({ ok: false, response: gate.response }),
+}));
+
+vi.mock("@/lib/rate-limit", () => ({
+  rateLimit: rateLimitMock,
+  clientIp: () => "test",
+  DEEP_ANALYZE_RATE_LIMIT: 5,
+  DEEP_ANALYZE_WINDOW_MS: 60 * 60 * 1000,
 }));
 
 const gate = vi.hoisted(() => ({
@@ -55,6 +64,7 @@ describe("POST /api/analyze/deep", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     queueAdd = vi.fn();
+    rateLimitMock.mockReturnValue({ ok: true, remaining: 4, retryAfter: 0 });
     gate.ok = true;
     gate.user = { id: "u1", email: "free@test.com", tier: "free" };
     gate.response = null;
@@ -64,6 +74,19 @@ describe("POST /api/analyze/deep", () => {
   it("rejects an invalid URL before the quota gate", async () => {
     const res = await post("not-a-url");
     expect(res.status).toBe(400);
+  });
+
+  it("rejects localhost URLs before the quota gate", async () => {
+    const res = await post("http://localhost:3000/private");
+    expect(res.status).toBe(400);
+  });
+
+  it("429s when the deep analyze route rate limit is exceeded", async () => {
+    rateLimitMock.mockReturnValue({ ok: false, remaining: 0, retryAfter: 42 });
+    const res = await post();
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("42");
+    expect(prismaMock.analysis.create).not.toHaveBeenCalled();
   });
 
   it("401s an anonymous caller (deep research requires an account)", async () => {

@@ -17,6 +17,7 @@ export {
   STALE_DAYS,
   agePenalty,
 } from "./constants";
+export { isSafePublicHttpUrl, assertSafePublicHttpUrl } from "./url-safety";
 export { buildProfileContext } from "./profile-context";
 export type { ProfileLike } from "./profile-context";
 export type {

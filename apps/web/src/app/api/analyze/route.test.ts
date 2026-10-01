@@ -105,6 +105,12 @@ describe("POST /api/analyze", () => {
     expect(usageMock.checkAndConsumeQuota).not.toHaveBeenCalled();
   });
 
+  it("rejects localhost URLs before touching quota", async () => {
+    const res = await post({ url: "http://localhost:3000/private" });
+    expect(res.status).toBe(400);
+    expect(usageMock.checkAndConsumeQuota).not.toHaveBeenCalled();
+  });
+
   it("consumes quota before enqueuing and returns the caller's remaining", async () => {
     usageMock.checkAndConsumeQuota.mockResolvedValue({
       allowed: true,

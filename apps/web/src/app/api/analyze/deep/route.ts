@@ -2,23 +2,31 @@ import { NextResponse } from "next/server";
 import { prisma } from "@newshog/db";
 import { getAnalyzeQueue } from "@newshog/queue";
 import { requireQuotaUser } from "@/lib/pro-gate";
-
-function isValidUrl(raw: string): boolean {
-  try {
-    const parsed = new URL(raw);
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
+import { rateLimit, clientIp, DEEP_ANALYZE_RATE_LIMIT, DEEP_ANALYZE_WINDOW_MS } from "@/lib/rate-limit";
+import { normalizeUrl } from "@/lib/url";
+import { assertSafePublicHttpUrl } from "@newshog/shared";
 
 export async function POST(request: Request) {
+  const gate = rateLimit(`analyze:deep:${clientIp(request)}`, DEEP_ANALYZE_RATE_LIMIT, DEEP_ANALYZE_WINDOW_MS);
+  if (!gate.ok) {
+    return NextResponse.json(
+      { error: "Too many deep analyses. Try again later." },
+      { status: 429, headers: { "Retry-After": String(gate.retryAfter) } },
+    );
+  }
+
   try {
     const body = await request.json();
     const { url } = body as { url?: string };
-    if (!url || typeof url !== "string" || !isValidUrl(url)) {
-      return NextResponse.json({ error: "Invalid URL. Provide a valid http(s) URL." }, { status: 400 });
+    if (!url || typeof url !== "string") {
+      return NextResponse.json({ error: "Invalid URL. Provide a public http(s) URL." }, { status: 400 });
     }
+    try {
+      assertSafePublicHttpUrl(url);
+    } catch {
+      return NextResponse.json({ error: "Invalid URL. Provide a public http(s) URL." }, { status: 400 });
+    }
+    const normalizedUrl = normalizeUrl(url);
 
     // Deep Research spends real LLM + network budget, so the deep_research
     // quota is enforced here before anything is enqueued. Anonymous callers
@@ -31,7 +39,7 @@ export async function POST(request: Request) {
 
     const analysis = await prisma.analysis.create({
       data: {
-        url,
+        url: normalizedUrl,
         status: "queued",
         userId: user.id,
         profileId: null,
