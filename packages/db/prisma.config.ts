@@ -1,4 +1,4 @@
-import { defineConfig, env } from "prisma/config";
+import { defineConfig } from "prisma/config";
 import { loadEnvFile } from "node:process";
 
 // Prisma 7's config file does NOT auto-load .env (that dependency was dropped).
@@ -17,7 +17,9 @@ for (const p of [".env", "../.env", "../../.env"]) {
 export default defineConfig({
   schema: "prisma/schema.prisma",
   datasource: {
-    url: env("DATABASE_URL"),
-    directUrl: env("DIRECT_URL"),
+    // `prisma generate` runs during dependency installation on build hosts
+    // before runtime secrets are injected. Generation only reads the schema;
+    // database access still requires DATABASE_URL/DIRECT_URL at runtime.
+    url: process.env.DATABASE_URL ?? "postgresql://newshog:build-only@localhost:5432/newshog",
   },
 });
