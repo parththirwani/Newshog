@@ -1,0 +1,125 @@
+{
+  "revision": "v1",
+  "sources": {
+    "https://www.securityweek.com/oasis-security-raises-120-million-for-agentic-access-management": {
+      "title": "Oasis raises $120M",
+      "text": "By Eduard Kovacs. Oasis Security announced raising $120 million.",
+      "captured_at": "2026-10-20"
+    },
+    "https://www.bankinfosecurity.com/oasis-raises-120m-series-b-to-safeguard-agentic-identities-a-31301": {
+      "title": "Oasis Raises $120M Series B to Safeguard Agentic Identities",
+      "text": "A non-human identity startup raised $120 million in a Craft Ventures-led Series B.",
+      "captured_at": "2026-10-20"
+    },
+    "https://techfundingnews.com/accel-and-sequoia-back-oasis-securitys-120m-series-b-for-secure-ai-agents/": {
+      "title": "Oasis Series B",
+      "text": "by Abhinaya Prabhu. Oasis Security raised $120 million.",
+      "captured_at": "2026-10-20"
+    },
+    "https://techcrunch.com/2026/10/01/kevin-mandias-new-agent-swarm-security-startup-armadin-raises-255-5m-at-2-5b-valuation/": {
+      "title": "Armadin raises $255.5M",
+      "text": "By Julie Bort. Armadin raised $255.5 million.",
+      "captured_at": "2026-10-20"
+    },
+    "https://www.reuters.com/legal/transactional/ai-cybersecurity-startup-armadin-valued-over-25-billion-after-new-funding-round-2026-10-01/": {
+      "title": "AI cybersecurity startup Armadin valued over $2.5 billion",
+      "text": "Armadin said it raised $255.5 million in a Series B funding round.",
+      "captured_at": "2026-10-20"
+    },
+    "https://a16z.com/announcement/investing-in-armadin/": {
+      "title": "Armadin investors",
+      "text": "We are excited to lead Armadin's Series B.",
+      "captured_at": "2026-10-20"
+    },
+    "https://example.test/whetlab-original": {
+      "title": "Whetlab acquired by Twitter",
+      "text": "Twitter acquired Whetlab.",
+      "captured_at": "2026-10-20"
+    },
+    "https://example.test/whetlab-followup": {
+      "title": "Whetlab follow-up",
+      "text": "A new development concerns the former Whetlab technology.",
+      "captured_at": "2026-10-20"
+    },
+    "https://www.securityweek.com/linx-security-raises-50-million-for-identity-security-and-governance/": {
+      "title": "Linx coverage",
+      "text": "Linx Security raises $50 million.",
+      "captured_at": "2026-10-20"
+    },
+    "https://siliconangle.com/2026/03/31/linx-security-raises-50m-new-funding-grow-identity-access-platform/": {
+      "title": "Linx raises $50M",
+      "text": "Linx Security raises $50M in new funding.",
+      "captured_at": "2026-10-20"
+    },
+    "https://www.linx.security/blog/linx-security-raises-50m-series-b": {
+      "title": "Linx announcement",
+      "text": "Linx Security has raised $50M Series B.",
+      "captured_at": "2026-10-20"
+    },
+    "https://example.test/linx-roundup": {
+      "title": "Linx market roundup",
+      "text": "Linx Security's $50 million Series B was reported as an identity-security funding round.",
+      "captured_at": "2026-10-20"
+    },
+    "https://example.test/linx-analysis": {
+      "title": "Linx funding analysis",
+      "text": "The Linx round adds to recent identity security funding coverage.",
+      "captured_at": "2026-10-20"
+    },
+    "https://linx.security/news/linx-security-raises-50m-series-b": {
+      "title": "Linx raises $50M",
+      "text": "Linx Security raised $50 million Series B.",
+      "captured_at": "2026-10-20"
+    },
+    "https://artificialintelligenceact.eu/implementation-timeline/": {
+      "title": "EU AI Act implementation timeline",
+      "text": "The timeline lists the application dates for high-risk AI systems.",
+      "captured_at": "2026-10-20"
+    },
+    "https://www.hklaw.com/en/insights/publications/2026/04/us-companies-face-eu-ai-acts-possible-august-2026-compliance-deadline": {
+      "title": "US companies face possible August 2026 deadline",
+      "text": "Businesses should monitor whether the proposed delay changes the August 2, 2026 deadline.",
+      "captured_at": "2026-10-20"
+    },
+    "https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai": {
+      "title": "EU policy home",
+      "text": "The European Commission describes the AI Act framework.",
+      "captured_at": "2026-10-20"
+    },
+    "https://blogs.nvidia.com/blog/india-ai-mission-infrastructure-models/": {
+      "title": "India Fuels Its AI Mission With NVIDIA",
+      "text": "India is building AI cloud offerings with tens of thousands of NVIDIA GPUs.",
+      "captured_at": "2026-10-20"
+    },
+    "https://datacenters.economictimes.indiatimes.com/news/ai-compute-infrastructure/indias-ai-compute-strategy-needs-value-focus-beyond-gpus/134554085": {
+      "title": "India's AI compute strategy needs value focus beyond GPUs",
+      "text": "Sovereign infrastructure requires power, cooling, and capabilities beyond GPUs.",
+      "captured_at": "2026-10-20"
+    },
+    "https://www.crnasia.com/india/news/2026/india-s-ai-infrastructure-build-opens-new-ground-for-channel-partners": {
+      "title": "India AI infrastructure projects",
+      "text": "Operators announced large data centre projects across India.",
+      "captured_at": "2026-10-20"
+    },
+    "https://www.prnewswire.com/news-releases/threatlocker-secures-190-million-in-series-f-funding-to-drive-product-innovation-and-global-expansion-302837156.html": {
+      "title": "ThreatLocker Secures $190M Series F",
+      "text": "ThreatLocker secured $190 million in Series F funding.",
+      "captured_at": "2026-10-20"
+    },
+    "https://www.scatrcorp.ai/news-insights/scatr-corp-series-a": {
+      "title": "SCATR raises $12.6M Series A",
+      "text": "SCATR raised $12.6 million in Series A funding for Zero Trust Transit.",
+      "captured_at": "2026-10-20"
+    },
+    "https://tracxn.com/d/trending-business-models/startups-in-secure-access-service-edge/__Gg1-9U2nCJgyexZEETfTGKSjhXXvk1waZ55OsE691WY": {
+      "title": "SASE market trends",
+      "text": "The SASE sector includes funded companies and recent investment trends.",
+      "captured_at": "2026-10-20"
+    },
+    "https://www.securityweek.com/kevin-mandias-armadin-raises-255-million-at-2-5-billion-valuation/": {
+      "title": "Armadin raises $255M",
+      "text": "By Mike Lennon. Armadin raised $255.5 million.",
+      "captured_at": "2026-10-20"
+    }
+  }
+}

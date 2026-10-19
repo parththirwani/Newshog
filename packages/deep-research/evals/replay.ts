@@ -6,9 +6,11 @@ import { rankSearchResults } from "../src/Search";
 type Candidate = { title: string; url: string; relevant: boolean; date: string | null; byline: string | null; passage: string | null; fetchedText?: string };
 type Case = { id: string; mode: string; held_out: boolean; question: string; required_subquestions: string[]; known_relevant_urls: string[]; candidates: Candidate[] };
 type Benchmark = { revision: string; as_of: string; held_out: string[]; cases: Case[] };
+type FetchedFixtures = { revision: string; sources: Record<string, { title: string; text: string; captured_at: string }> };
 
 const root = path.resolve(process.cwd());
 const benchmark = JSON.parse(fs.readFileSync(path.join(root, "packages/deep-research/evals/benchmark.v1.json"), "utf8")) as Benchmark;
+const fetchedFixtures = JSON.parse(fs.readFileSync(path.join(root, "packages/deep-research/evals/fetched-fixtures.v1.json"), "utf8")) as FetchedFixtures;
 const run = process.argv.includes("--run") ? process.argv[process.argv.indexOf("--run") + 1] : "baseline";
 if (run !== "baseline" && run !== "candidate") throw new Error("--run must be baseline or candidate");
 
@@ -33,13 +35,15 @@ function select(c: Case): Candidate[] {
 
 const rows = benchmark.cases.map((c) => {
   const selected = select(c);
-  const evidence = selected.map((candidate) => ({
+  const evidence = selected
+    .filter((candidate) => fetchedFixtures.sources[candidate.url]?.text.includes(candidate.passage ?? ""))
+    .map((candidate) => ({
     text: candidate.passage ?? "",
     sourceUrls: [candidate.url],
     excerpt: candidate.passage ?? "",
     scope: c.question,
   }));
-  const fetchedTextByUrl = Object.fromEntries(selected.map((candidate) => [candidate.url, candidate.fetchedText ?? candidate.passage ?? ""]));
+  const fetchedTextByUrl = Object.fromEntries(selected.map((candidate) => [candidate.url, fetchedFixtures.sources[candidate.url]?.text ?? ""]));
   const parsed = parseLearnings(JSON.stringify({ learnings: evidence, followUpQuestions: [] }), selected.map((candidate) => candidate.url), fetchedTextByUrl, c.question);
   const acceptedEvidence = new Set(parsed.learnings.map((learning) => learning.sourceUrls[0]));
   const relevant = selected.filter((candidate) => acceptedEvidence.has(candidate.url));
@@ -59,7 +63,7 @@ const rows = benchmark.cases.map((c) => {
     ? (selected.filter((x) => x.relevant && x.byline && x.passage).length / Math.max(1, selected.filter((x) => x.byline).length))
     : null;
   return {
-    caseId: c.id, mode: c.mode, heldOut: c.held_out, selected: selected.map((x) => ({ url: x.url, title: x.title, relevant: x.relevant, date: x.date, byline: x.byline, passage: Boolean(x.passage), fetchedText: Boolean(x.fetchedText) })),
+    caseId: c.id, mode: c.mode, heldOut: c.held_out, selected: selected.map((x) => ({ url: x.url, title: x.title, relevant: x.relevant, date: x.date, byline: x.byline, passage: Boolean(x.passage), fetchedText: Boolean(fetchedFixtures.sources[x.url]) })),
     precisionAt5, evidenceCoverage, evidenceBacked: relevant.length > 0 ? 1 : 0, explicitGap, bylinePrecision, badSuccess,
     cost: { promptTokens: 0, completionTokens: 0, providerCostUsd: 0 }, latencyMs: 0,
   };
