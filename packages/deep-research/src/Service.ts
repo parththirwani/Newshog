@@ -341,7 +341,12 @@ export interface ResearchOutcome {
   visitedUrls: string[];
   coveredQueries: string[];
   sources: ResearchSource[];
-  /** url → ISO publish date, for building a coverage signal. */
+  /** True only when synthesis produced an answer supported by accepted evidence. */
+  evidenceComplete: boolean;
+  /** Human-readable reason when the run is partial or failed quality checks. */
+  statusReason?: string;
+  /** URLs that were fetched successfully and contributed accepted evidence. */
+  acceptedSourceUrls: string[];
   sourceDates: Record<string, string>;
   text?: string;
   answer?: string;
@@ -442,6 +447,9 @@ export async function runResearch(input: DeepResearchInput, deps: Partial<Deps> 
       visitedUrls: [...new Set(state.visitedUrls)],
       coveredQueries: [...state.coveredQueries],
       sources: final.sources,
+      evidenceComplete: state.learnings.length > 0 && final.sources.some((source) => source.status === "verified"),
+      acceptedSourceUrls: final.sources.filter((source) => source.status === "verified").map((source) => source.url),
+      ...(state.learnings.length > 0 && final.sources.some((source) => source.status === "verified") ? {} : { statusReason: "No accepted fetched evidence supported the final answer." }),
       sourceDates: state.sourceDates,
       promptTokens: budget.promptTokens,
       completionTokens: budget.completionTokens,
@@ -469,6 +477,9 @@ export async function runResearch(input: DeepResearchInput, deps: Partial<Deps> 
     visitedUrls: [...new Set(state.visitedUrls)],
     coveredQueries: [...state.coveredQueries],
     sources: [],
+    evidenceComplete: false,
+    acceptedSourceUrls: [],
+    statusReason: "Research stopped at the token ceiling before a complete evidence-backed answer was produced.",
     sourceDates: state.sourceDates,
     promptTokens: budget.promptTokens,
     completionTokens: budget.completionTokens,

@@ -75,7 +75,7 @@ export function deepResearchWorker(): Worker {
 
         const status = outcome.truncated
           ? ("truncated" as const)
-          : (outcome.lowConfidence ? ("low_confidence" as const) : ("completed" as const));
+          : (!outcome.evidenceComplete ? ("low_confidence" as const) : (outcome.lowConfidence ? ("low_confidence" as const) : ("completed" as const)));
         await prisma.deepResearchRun.update({
           where: { runId },
           data: {
@@ -88,6 +88,7 @@ export function deepResearchWorker(): Worker {
             report: outcome.report ?? null,
             promptTokens: outcome.promptTokens,
             completionTokens: outcome.completionTokens,
+            ...(outcome.statusReason ? { error: outcome.statusReason } : {}),
             ...(outcome.truncationReason ? { error: outcome.truncationReason } : {}),
           },
         }).catch((err) => console.error("[deep-research] final persist failed:", err));

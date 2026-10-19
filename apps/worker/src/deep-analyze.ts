@@ -40,10 +40,12 @@ export function buildCoverageSignal(
   sourceDates: Record<string, string>,
   articleUrl?: string,
   articlePublishedAt?: string | null,
+  acceptedSourceUrls: string[] = visitedUrls,
 ): CoverageSignal | null {
   const external = [...new Set(visitedUrls)]
     .filter((url) => url !== articleUrl)
-    .filter((url) => sourceDates[url]);
+    .filter((url) => sourceDates[url])
+    .filter((url) => acceptedSourceUrls.includes(url));
   if (external.length === 0) {
     return { externalSourceCount: 0, precedesSubmittedArticle: false };
   }
@@ -283,7 +285,7 @@ export async function deepAnalyzeArticle(props: {
 
   const status = outcome.truncated
     ? ("truncated" as const)
-    : (outcome.lowConfidence ? ("low_confidence" as const) : ("completed" as const));
+    : (!outcome.evidenceComplete ? ("low_confidence" as const) : (outcome.lowConfidence ? ("low_confidence" as const) : ("completed" as const)));
   await prisma.deepResearchRun.update({
     where: { runId: run.runId },
     data: {
@@ -294,12 +296,19 @@ export async function deepAnalyzeArticle(props: {
       coveredQueries: outcome.coveredQueries,
       promptTokens: outcome.promptTokens,
       completionTokens: outcome.completionTokens,
+      ...(outcome.statusReason ? { error: outcome.statusReason } : {}),
       ...(outcome.truncationReason ? { error: outcome.truncationReason } : {}),
     },
   }).catch((err) => console.error("[deep-analyze] persist research run failed:", err));
 
   const digest = compileDigest(outcome.learnings, outcome.sources);
-  const coverageSignal = buildCoverageSignal(outcome.visitedUrls, outcome.sourceDates, articleUrl, articlePublishedAt);
+  const coverageSignal = buildCoverageSignal(
+    outcome.visitedUrls,
+    outcome.sourceDates,
+    articleUrl,
+    articlePublishedAt,
+    outcome.acceptedSourceUrls,
+  );
 
   // Resurfacing detection: old-article only, deep-research path only. Adds the
   // recency query + evidence-gated confirmation into the coverage signal so the

@@ -1,6 +1,6 @@
 # Architecture decisions
 
-Status: checkpoint 2 retrieval changes implemented and tested; provider selection and final evidence/status architecture remain open.
+Status: checkpoint 2 retrieval changes implemented and tested; checkpoint 3 evidence gating/status/coverage changes implemented and tested. Overall gates remain unmet.
 
 ## Search provider
 

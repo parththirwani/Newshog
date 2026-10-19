@@ -42,7 +42,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ runId: str
     completionTokens: run.completionTokens,
     truncated: run.status === "truncated",
     lowConfidence: run.status === "low_confidence",
-    error: run.error,
+    statusReason: run.error,
   });
 }
 
@@ -50,7 +50,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ runId: st
   const { runId } = await params;
   const run = await isRunUser(runId);
   if (!run) return NextResponse.json({ error: "Not found." }, { status: 404 });
-  if (run.status === "completed" || run.status === "truncated") {
+  if (run.status === "completed" || run.status === "truncated" || run.status === "low_confidence") {
     return NextResponse.json({ error: "Run already finished." }, { status: 409 });
   }
 

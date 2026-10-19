@@ -42,4 +42,4 @@ Held-out baseline precision: `article-04` 0.60, `standalone-04` 0.60, `byline-02
 
 Checkpoint 1: PASS — 12 cases, labels, four held-out cases, sanitized traces, and deterministic replay command exist and run.
 
-Overall release gates: NOT YET MET. Next experiment: implement production URL normalization, bounded retries, candidate relevance/diversity ranking, and explicit empty/zero-source status; rerun the identical replay before changing synthesis.
+The next candidate also fails closed when scrape returns only a search snippet, exposes `evidenceComplete`, `acceptedSourceUrls`, and `statusReason`, persists low-confidence rather than completed for zero accepted evidence, and counts only accepted fetched URLs in article coverage. Deterministic verification: 58 tests pass. The live IAM diagnostic remains unrun in this pass; the available HTML probe found DDG zero parsed results and Bing off-topic results.
