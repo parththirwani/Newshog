@@ -43,6 +43,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ runId: str
     truncated: run.status === "truncated",
     lowConfidence: run.status === "low_confidence",
     statusReason: run.error,
+    error: run.error,
   });
 }
 
