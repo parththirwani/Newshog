@@ -52,7 +52,8 @@ export function rankSearchResults(query: string, entries: SearchResult[]): Searc
     .map((entry, index) => {
       const haystack = `${entry.title} ${entry.snippet} ${entry.url}`.toLowerCase();
       const reasons: string[] = [];
-      let score = tokens.filter((token) => haystack.includes(token)).length * 10;
+      const overlap = tokens.filter((token) => haystack.includes(token));
+      let score = overlap.length * 10;
       const collision = COLLISION_PATTERNS.find((pattern) => pattern.test(haystack));
       if (collision) {
         score -= 100;
@@ -63,8 +64,12 @@ export function rankSearchResults(query: string, entries: SearchResult[]): Searc
         reasons.push("topic collision");
       }
       if (/fund|raise|series|security|startup|report|coverage/.test(haystack)) score += 20;
+      if (tokens.length >= 3 && overlap.length < 3 && !collision) {
+        score -= 100;
+        reasons.push("insufficient topical overlap");
+      }
       if (score <= 0 && reasons.length === 0) reasons.push("low topical relevance");
-      const failureReason = reasons.some((reason) => reason.startsWith("topic collision") || reason === "low topical relevance") ? reasons.join(", ") : undefined;
+      const failureReason = reasons.some((reason) => reason.startsWith("topic collision") || reason === "low topical relevance" || reason === "insufficient topical overlap") ? reasons.join(", ") : undefined;
       return { entry: { ...entry, failureReason }, score, index };
     })
     .sort((a, b) => b.score - a.score || a.index - b.index)
