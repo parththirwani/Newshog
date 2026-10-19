@@ -45,7 +45,7 @@ The release gates remain active and the current candidate is not release-ready. 
 - Benchmark exists with 12 labeled cases and four held out: PASS.
 - Deterministic replay works and emits sanitized traces: PASS.
 - Held-out retrieval precision >= 0.70: FAIL — candidate 0.50 (baseline 0.40).
-- Evidence-backed coverage >= 0.80 or truthful gaps: FAIL — production-selector replay is 0.208 under subquestion-level scoring; status code now records low confidence for zero accepted evidence.
+- Evidence-backed coverage >= 0.80 or truthful gaps: FAIL — production-selector replay is 0.208 under subquestion-level scoring; the live run now exposes an `evidenceCoverage` field, but the current implementation still uses a coarse learning-presence proxy and needs per-subquestion ledger mapping.
 - Citation support >= 0.95: PASS only for fixture passage checks; no live generated-claim sample was run.
 - Zero empty/zero-source completed runs: PASS in the production status path by `evidenceComplete`; not yet verified against a database integration run.
 - Cancellation, SSRF, queue persistence, and existing suites: PASS per the workspace rerun (35 deep-research tests, 149 worker tests, 226 web tests). The previously reported `vi.hoisted` web-test blocker no longer reproduces.

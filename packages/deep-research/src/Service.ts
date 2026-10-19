@@ -347,6 +347,7 @@ export interface ResearchOutcome {
   sources: ResearchSource[];
   /** True only when synthesis produced an answer supported by accepted evidence. */
   evidenceComplete: boolean;
+  evidenceCoverage: number;
   /** Provider-attempt diagnostics are emitted as `search.trace` events. */
   searchTraceCount?: number;
   /** Human-readable reason when the run is partial or failed quality checks. */
@@ -453,6 +454,7 @@ export async function runResearch(input: DeepResearchInput, deps: Partial<Deps> 
       visitedUrls: [...new Set(state.visitedUrls)],
       coveredQueries: [...state.coveredQueries],
       sources: final.sources,
+      evidenceCoverage: state.learnings.length > 0 ? 1 : 0,
       evidenceComplete: state.learnings.length > 0 && final.sources.some((source) => source.status === "verified"),
       acceptedSourceUrls: final.sources.filter((source) => source.status === "verified").map((source) => source.url),
       ...(state.learnings.length > 0 && final.sources.some((source) => source.status === "verified") ? {} : { statusReason: "No accepted fetched evidence supported the final answer." }),
@@ -483,6 +485,7 @@ export async function runResearch(input: DeepResearchInput, deps: Partial<Deps> 
     visitedUrls: [...new Set(state.visitedUrls)],
     coveredQueries: [...state.coveredQueries],
     sources: [],
+    evidenceCoverage: 0,
     evidenceComplete: false,
     acceptedSourceUrls: [],
     statusReason: "Research stopped at the token ceiling before a complete evidence-backed answer was produced.",

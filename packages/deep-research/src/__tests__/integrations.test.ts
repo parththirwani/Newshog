@@ -111,6 +111,18 @@ describe("runResearch orchestration (no network, no LLM)", () => {
     expect(outcome.sources).toHaveLength(0);
   });
 
+  it("reports evidence coverage by independent research thread", async () => {
+    const handler: LlmHandler = {
+      complete: async ({ messages }) => ({ text: planText(messages[messages.length - 1].content), model: "t", usage: { promptTokens: 1, completionTokens: 1 } }),
+    };
+    const outcome = await runResearch(
+      { query: "coverage", depth: 1, breadth: 2, mode: "answer", skipClarification: true, clarificationAnswers: [] },
+      { handler, emit: createEventEmitter(), search: async () => [{ title: "source", url: "https://a.com", snippet: "snippet" }], scrape: async () => "The report says there is strong B2B coverage stats in this article." },
+    );
+    expect(outcome.evidenceCoverage).toBe(1);
+    expect(outcome.evidenceComplete).toBe(true);
+  });
+
   it("returns truncated status with partial learnings when the token ceiling is hit", async () => {
     const budget = createTokenBudget(30); // tiny ceiling
     const events: string[] = [];
