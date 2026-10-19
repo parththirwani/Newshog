@@ -166,9 +166,20 @@ async function analyzeSearchQuery(args: {
   }
 
   const selected = sources.filter((source) => !source.failureReason).slice(0, MAX_SOURCES_PER_QUERY);
+  async function tracedScrape(url: string): Promise<string> {
+    const started = Date.now();
+    try {
+      const text = await deps.scrape(url);
+      deps.emit.emit("fetch.trace", { url, success: true, chars: text.length, latencyMs: Date.now() - started });
+      return text;
+    } catch (error) {
+      deps.emit.emit("fetch.trace", { url, success: false, latencyMs: Date.now() - started, failureReason: error instanceof Error ? error.message : String(error) });
+      throw error;
+    }
+  }
   const scraped = await mapWithConcurrency(selected, innerConcurrency, async (source) => {
     try {
-      const scrapeResult = await deps.scrape(source.url);
+      const scrapeResult = await tracedScrape(source.url);
       if (!scrapeResult.trim() || scrapeResult.trim() === source.snippet.trim()) throw new Error("No fetched source text; search snippet is not evidence.");
       return { ...source, markdown: scrapeResult };
     } catch (error) {
@@ -199,7 +210,10 @@ async function analyzeSearchQuery(args: {
   try {
     const extracted = await structured(deps, {
       prompt: learningsPrompt(searchQuery.query, contents),
-      parser: (text) => parseLearnings(text, scraped.map((source) => source.url), fetchedTextByUrl, searchQuery.query),
+      parser: (text) => {
+        try { return parseLearnings(text, scraped.map((source) => source.url), fetchedTextByUrl, searchQuery.query); }
+        catch (error) { deps.emit.emit("evidence.rejected", { query: searchQuery.query, reason: error instanceof Error ? error.message : String(error) }); throw error; }
+      },
       purpose: "extract_learnings",
     });
       deps.emit.emit("content.processing.completed", { query: searchQuery.query });

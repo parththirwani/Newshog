@@ -53,7 +53,7 @@ The release gates remain active and the current candidate is not release-ready. 
 - Build: PASS (`bun run build`). Lint: BLOCKED by existing interactive `next lint` configuration prompt under both normal and `CI=1` invocation; no lint result is claimed.
 - Fixed-URL full evidence run: completed in 37,407 ms with 9,926 prompt and 3,396 completion tokens. Two fixed Oasis URLs produced 5 accepted scoped learnings, 2 accepted sources, `evidenceCoverage=1`, no missing scopes, `evidenceComplete=true`, and `lowConfidence=false`. Verification saw 10 factual sentences, repaired 3, removed 2. This demonstrates the production evidence path works when retrieval is constrained to known relevant URLs; it is not a broad retrieval quality result.
 - `plans/deep-research/traces/` is generated replay output and remains untracked; it contains only public fixture metadata and no credentials.
-- Provider attempt traces are now emitted as ordered `search.trace` events with provider, attempt, result count, failure reason, and latency; they are available to the existing event/audit pipeline but not yet persisted into replay traces.
+- Service now emits `fetch.trace` for each selected candidate and `evidence.rejected` when extraction fails, so the next broad run can distinguish fetch failure from excerpt rejection.
 - Research learnings now carry a scope, and final outcomes expose covered and missing scopes for per-thread evidence accounting.
 - `packages/deep-research/evals/fetched-fixtures.v1.json` is a sanitized, public-passage corpus generated from the benchmark labels for deterministic excerpt-presence checks; it is not an independent web capture and cannot establish source correctness beyond the fixture text.
 
