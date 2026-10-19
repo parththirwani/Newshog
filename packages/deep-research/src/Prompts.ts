@@ -24,7 +24,7 @@ export function clarificationPrompt(query: string): string {
 
 export function learningsPrompt(query: string, contents: string, scope = ""): string {
   const scopeLine = scope ? `\nResearch scope: ${scope}` : "";
-  return `Extract concise, information-dense findings from the web sources for this research query. Include exact entities, dates, and numbers where present. Every finding must include one or more exact supporting source URLs copied from the Sources section. Do not include a finding if it is unsupported. For every finding, quote the exact supporting excerpt from the source (copy a short verbatim passage) into the "excerpt" field so the claim can be verified against source text. Return only JSON: {"learnings":[{"text":"...","sourceUrls":["https://example.com"],"excerpt":"verbatim supporting passage"}],"followUpQuestions":["..."]}.\n\nQuery:\n${query}${scopeLine}\n\nSources:\n${contents}`;
+  return `Extract concise, information-dense findings from the web sources for this research query. Include exact entities, dates, and numbers where present. Every finding must include one or more exact supporting source URLs copied from the Sources section. Do not include a finding if it is unsupported. For every finding, include a scope field copied from the Query/Research scope line so each finding is attributable to one subquestion or thread. Quote the exact supporting excerpt from the source into the excerpt field. Return only JSON: {"learnings":[{"text":"...","sourceUrls":["https://example.com"],"excerpt":"verbatim supporting passage","scope":"..."}],"followUpQuestions":["..."]}.\n\nQuery:\n${query}${scopeLine}\n\nSources:\n${contents}`;
 }
 
 function formatFindings(learnings: Learning[], sources: ResearchSource[]): string {

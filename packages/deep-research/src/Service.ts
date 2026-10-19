@@ -64,8 +64,9 @@ export function mergeLearnings(learnings: Learning[]): Learning[] {
     if (existing) {
       existing.sourceUrls = [...new Set([...existing.sourceUrls, ...learning.sourceUrls])];
       if (!existing.excerpt && learning.excerpt) existing.excerpt = learning.excerpt;
+      if (!existing.scope && learning.scope) existing.scope = learning.scope;
     } else {
-      merged.set(text, { text, sourceUrls: [...new Set(learning.sourceUrls)], ...(learning.excerpt ? { excerpt: learning.excerpt } : {}) });
+      merged.set(text, { text, sourceUrls: [...new Set(learning.sourceUrls)], ...(learning.excerpt ? { excerpt: learning.excerpt } : {}), ...(learning.scope ? { scope: learning.scope } : {}) });
     }
   }
   return [...merged.values()];
@@ -95,8 +96,8 @@ interface ResearchState {
   coveredQueries: string[];
   /** url → ISO publish date, filled as sources are scraped, for coverage signal. */
   sourceDates: Record<string, string>;
+  requiredScopes: string[];
 }
-
 interface Deps {
   handler: LlmHandler;
   budget: ReturnType<typeof createTokenBudget>;
@@ -160,6 +161,8 @@ async function analyzeSearchQuery(args: {
   for (const url of sources.map((s) => s.url)) {
     state.visitedUrls.push(url);
     if (!state.coveredQueries.includes(searchQuery.query)) state.coveredQueries.push(searchQuery.query);
+      state.requiredScopes = state.requiredScopes.filter((scope) => scope !== searchQuery.query);
+      if (state.requiredScopes.length === 0) state.requiredScopes.push(searchQuery.query);
   }
 
   const selected = sources.filter((source) => !source.failureReason).slice(0, MAX_SOURCES_PER_QUERY);
@@ -196,10 +199,11 @@ async function analyzeSearchQuery(args: {
   try {
     const extracted = await structured(deps, {
       prompt: learningsPrompt(searchQuery.query, contents),
-      parser: (text) => parseLearnings(text, scraped.map((source) => source.url), fetchedTextByUrl),
+      parser: (text) => parseLearnings(text, scraped.map((source) => source.url), fetchedTextByUrl, searchQuery.query),
       purpose: "extract_learnings",
     });
-    deps.emit.emit("content.processing.completed", { query: searchQuery.query });
+      deps.emit.emit("content.processing.completed", { query: searchQuery.query });
+      if (extracted.missingScopes.length) deps.emit.emit("warning", { message: `Evidence extraction omitted required scope(s): ${extracted.missingScopes.join(", ")}` });
     for (const learning of extracted.learnings) deps.emit.emit("learning.created", { query: searchQuery.query, learning });
     for (const question of extracted.followUpQuestions) deps.emit.emit("follow_up.created", { query: searchQuery.query, question });
     deps.emit.emit("cost.updated", {
@@ -234,7 +238,10 @@ async function research(args: {
     parser: parseResearchPlan,
     purpose: "generate_search_plan",
   });
-  for (const q of queries) if (!state.coveredQueries.includes(q.query)) state.coveredQueries.push(q.query);
+  for (const q of queries) {
+    if (!state.coveredQueries.includes(q.query)) state.coveredQueries.push(q.query);
+    if (!state.requiredScopes.includes(q.query)) state.requiredScopes.push(q.query);
+  }
   deps.emit.emit("research.plan.completed", { queries });
 
   const results = await mapWithConcurrency(queries, innerConcurrency, async (searchQuery) => {
@@ -348,6 +355,8 @@ export interface ResearchOutcome {
   /** True only when synthesis produced an answer supported by accepted evidence. */
   evidenceComplete: boolean;
   evidenceCoverage: number;
+  coveredScopes: string[];
+  missingScopes: string[];
   /** Provider-attempt diagnostics are emitted as `search.trace` events. */
   searchTraceCount?: number;
   /** Human-readable reason when the run is partial or failed quality checks. */
@@ -388,7 +397,7 @@ export async function runResearch(input: DeepResearchInput, deps: Partial<Deps> 
   };
 
   const context = buildResearchContext(input.query, input.clarificationAnswers ?? []);
-  const state: ResearchState = { learnings: [], visitedUrls: [], coveredQueries: [], sourceDates: {} };
+  const state: ResearchState = { learnings: [], visitedUrls: [], coveredQueries: [], sourceDates: {}, requiredScopes: [] };
   fullDeps.emit.emit("research.started", { query: input.query, breadth: input.breadth, depth: input.depth, mode: input.mode });
 
   let truncated = false;
@@ -449,12 +458,18 @@ export async function runResearch(input: DeepResearchInput, deps: Partial<Deps> 
       promptTokens: budget.promptTokens,
       completionTokens: budget.completionTokens,
     });
+    const total = state.requiredScopes.length > 1 ? state.requiredScopes.length : (state.learnings.length > 0 ? 1 : 0);
+    const covered = state.requiredScopes.length > 1
+      ? state.requiredScopes.filter((scope) => state.learnings.some((learning) => learning.scope === scope)).length
+      : (state.learnings.length > 0 ? 1 : 0);
     const outcome: ResearchOutcome = {
       learnings: state.learnings,
       visitedUrls: [...new Set(state.visitedUrls)],
       coveredQueries: [...state.coveredQueries],
       sources: final.sources,
-      evidenceCoverage: state.learnings.length > 0 ? 1 : 0,
+      coveredScopes: [...new Set(state.learnings.map((learning) => learning.scope).filter((scope): scope is string => Boolean(scope)))],
+      missingScopes: state.requiredScopes.filter((scope) => !state.learnings.some((learning) => learning.scope === scope)),
+      evidenceCoverage: total ? covered / total : 0,
       evidenceComplete: state.learnings.length > 0 && final.sources.some((source) => source.status === "verified"),
       acceptedSourceUrls: final.sources.filter((source) => source.status === "verified").map((source) => source.url),
       ...(state.learnings.length > 0 && final.sources.some((source) => source.status === "verified") ? {} : { statusReason: "No accepted fetched evidence supported the final answer." }),
@@ -486,6 +501,8 @@ export async function runResearch(input: DeepResearchInput, deps: Partial<Deps> 
     coveredQueries: [...state.coveredQueries],
     sources: [],
     evidenceCoverage: 0,
+    coveredScopes: [],
+    missingScopes: [],
     evidenceComplete: false,
     acceptedSourceUrls: [],
     statusReason: "Research stopped at the token ceiling before a complete evidence-backed answer was produced.",

@@ -28,6 +28,8 @@ export interface Learning {
   sourceUrls: string[];
   /** The exact supporting passage from the source the model based this claim on. */
   excerpt?: string;
+  /** Research thread/subquestion this learning answers. */
+  scope?: string;
 }
 
 export interface ResearchSource {

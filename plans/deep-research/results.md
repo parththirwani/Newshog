@@ -45,7 +45,7 @@ The release gates remain active and the current candidate is not release-ready. 
 - Benchmark exists with 12 labeled cases and four held out: PASS.
 - Deterministic replay works and emits sanitized traces: PASS.
 - Held-out retrieval precision >= 0.70: FAIL — candidate 0.50 (baseline 0.40).
-- Evidence-backed coverage >= 0.80 or truthful gaps: FAIL — production-selector replay is 0.208 under subquestion-level scoring; the live run now exposes an `evidenceCoverage` field, but the current implementation still uses a coarse learning-presence proxy and needs per-subquestion ledger mapping.
+- Evidence-backed coverage >= 0.80 or truthful gaps: FAIL — production-selector replay is 0.208 under subquestion-level scoring; production now carries `scope`, `coveredScopes`, and `missingScopes` through extraction and outcomes, with deterministic integration coverage. Live quality still needs a rerun using the new ledger.
 - Citation support >= 0.95: PASS only for fixture passage checks; no live generated-claim sample was run.
 - Zero empty/zero-source completed runs: PASS in the production status path by `evidenceComplete`; not yet verified against a database integration run.
 - Cancellation, SSRF, queue persistence, and existing suites: PASS per the workspace rerun (35 deep-research tests, 149 worker tests, 226 web tests). The previously reported `vi.hoisted` web-test blocker no longer reproduces.
@@ -53,5 +53,6 @@ The release gates remain active and the current candidate is not release-ready. 
 - Live provider/model cost and latency: provider comparison probe ran 2 topical queries through DDG and Bing. DDG produced 0 parsed results; Bing produced 10 parsed results per query through the RSS fallback, but the top results were mostly listicles/market pages. A bounded live IAM end-to-end run completed in 59,062 ms, used 22,412 prompt and 4,978 completion tokens, fetched 2 accepted sources, and returned a 1,374-character report. Verification removed 2 claims and flagged low confidence. Provider price was not available, so cost is unreported rather than estimated.
 - `plans/deep-research/traces/` is generated replay output and remains untracked; it contains only public fixture metadata and no credentials.
 - Provider attempt traces are now emitted as ordered `search.trace` events with provider, attempt, result count, failure reason, and latency; they are available to the existing event/audit pipeline but not yet persisted into replay traces.
+- Research learnings now carry a scope, and final outcomes expose covered and missing scopes for per-thread evidence accounting.
 
 Checkpoint 6: NOT RELEASE-READY. The Bing RSS fallback recovers sources and the bounded live IAM run completed, but the report was low-confidence, search relevance remained weak, and no independent provider comparison or claim-level live scoring was run. Next experiment: add trace persistence for provider attempts and run one independent-provider/live-source comparison with sampled claim support.

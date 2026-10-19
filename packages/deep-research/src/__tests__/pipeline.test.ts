@@ -113,9 +113,10 @@ describe("structured response parsing", () => {
       '{"learnings":[{"text":"Python has docs","sourceUrls":["https://trusted.example","https://bad.example"],"excerpt":"official docs exist"}],"followUpQuestions":["What versions?"]}',
       ["https://trusted.example"],
       { "https://trusted.example": "official docs exist in this fetched page" },
+      "official docs",
     );
     expect(parsed.learnings).toEqual([
-      { text: "Python has docs", sourceUrls: ["https://trusted.example"], excerpt: "official docs exist" },
+      { text: "Python has docs", sourceUrls: ["https://trusted.example"], excerpt: "official docs exist", scope: "official docs" },
     ]);
     expect(parsed.followUpQuestions).toEqual(["What versions?"]);
   });

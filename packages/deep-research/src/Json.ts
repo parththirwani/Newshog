@@ -62,9 +62,10 @@ export function parseResearchPlan(text: string): Array<{ query: string; research
  * excerpt the model quoted for each claim (grounding for the enforcement gate
  * in Verify.ts).
  */
-export function parseLearnings(text: string, allowedSourceUrls: string[] = [], fetchedTextByUrl: Record<string, string> = {}): {
+export function parseLearnings(text: string, allowedSourceUrls: string[] = [], fetchedTextByUrl: Record<string, string> = {}, scope = ""): {
   learnings: Learning[];
   followUpQuestions: string[];
+  missingScopes: string[];
 } {
   const result = extractJsonObject(text);
   if (!Array.isArray(result.learnings)) throw new Error("Expected learnings to be an array.");
@@ -72,7 +73,7 @@ export function parseLearnings(text: string, allowedSourceUrls: string[] = [], f
   const learnings = result.learnings
     .filter((item) => typeof (item as { text?: string }).text === "string" && (item as { text: string }).text.trim())
     .map((item) => {
-      const entry = item as { text: string; sourceUrls?: unknown; excerpt?: unknown };
+      const entry = item as { text: string; sourceUrls?: unknown; excerpt?: unknown; scope?: unknown };
       const excerpt = typeof entry.excerpt === "string" ? entry.excerpt.trim().slice(0, 4000) : undefined;
       const sourceUrls = [...new Set<string>(Array.isArray(entry.sourceUrls) ? (entry.sourceUrls as string[]) : [])]
         .filter((url) => typeof url === "string" && allowedUrls.has(url))
@@ -85,17 +86,14 @@ export function parseLearnings(text: string, allowedSourceUrls: string[] = [], f
         text: entry.text.trim(),
         sourceUrls,
         ...(excerpt ? { excerpt } : {}),
+        ...(typeof entry.scope === "string" && entry.scope.trim() ? { scope: entry.scope.trim().slice(0, 500) } : scope ? { scope } : {}),
       };
     })
     .filter((item) => item.sourceUrls.length > 0)
     .slice(0, 8);
 
-  return {
-    learnings,
-    followUpQuestions: stringList(result.followUpQuestions, "followUpQuestions", 6),
-  };
+  return { learnings, followUpQuestions: stringList(result.followUpQuestions, "followUpQuestions", 6), missingScopes: [] };
 }
-
 export function parseClarificationQuestions(text: string): Clarification[] {
   const result = extractJsonObject(text);
   if (!Array.isArray(result.questions)) throw new Error("Expected questions to be an array.");
