@@ -5,7 +5,7 @@ import { parseLearnings, parseResearchPlan, parseClarificationQuestions, parseSu
 import { buildResearchContext, citationSources, mergeLearnings, validateClarificationAnswers, SEARCH_CONCURRENCY } from "../Service";
 import { reportPrompt, planPrompt, learningsPrompt } from "../Prompts";
 import { extractMarkdown } from "../Scrape";
-import { normalizeSearchResults, parseBingHtml, resolveBingUrl, rankSearchResults } from "../Search";
+import { normalizeSearchResults, parseBingHtml, parseBingRss, resolveBingUrl, rankSearchResults, createBingProvider } from "../Search";
 import { enforceReport, isGrounded, isAnalysisSentence, segmentReport } from "../Verify";
 import type { RepairFn, Rewrite } from "../Verify";
 import { createTokenBudget } from "../Llm";
@@ -48,6 +48,33 @@ describe("Bing failover search", () => {
     expect(resolveBingUrl("https://duckdb.org/")).toBe("https://duckdb.org/");
   });
 
+  it("falls back to Bing RSS when HTML has no parsed organic results", async () => {
+    const originalFetch = globalThis.fetch;
+    const calls: string[] = [];
+    globalThis.fetch = (async (input) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.includes("format=rss")) return new Response(`<rss><channel><item><title>Linx raises $50M</title><link>https://example.com/linx</link><description>funding</description></item></channel></rss>`, { status: 200 });
+      return new Response("<html></html>", { status: 200 });
+    }) as typeof fetch;
+    try {
+      const result = await createBingProvider().search("identity security funding");
+      expect(result[0].url).toBe("https://example.com/linx");
+      expect(calls.some((url) => url.includes("format=rss"))).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("parses Bing RSS organic results", () => {
+    const xml = `<rss><channel><item><title>Linx raises $50M</title><link>https://example.com/linx</link><description>Linx Security raised $50 million.</description></item><item><title>Identity dictionary</title><link>https://example.com/dictionary</link><description>definition</description></item></channel></rss>`;
+    const results = parseBingRss(xml);
+    expect(results).toEqual([
+      { title: "Linx raises $50M", url: "https://example.com/linx", snippet: "Linx Security raised $50 million." },
+      { title: "Identity dictionary", url: "https://example.com/dictionary", snippet: "definition" },
+    ]);
+  });
+
   it("parses b_algo results into deduped, validated search results", () => {
     const html = `<ol id="b_results"><li class="b_algo"><h2><a href="https://www.bing.com/ck/a?u=a1aHR0cHM6Ly9kdWNrZGIub3JnLw">DuckDB</a></h2><div class="b_caption"><p>An in-process SQL OLAP database.</p></div></li><li class="b_algo"><h2><a href="https://www.bing.com/ck/a?u=a1aHR0cHM6Ly9kdWNrZGIub3JnL2luc3RhbGwv">Install</a></h2><div class="b_caption"><p>Install guide.</p></div></li></ol>`;
     const results = parseBingHtml(html);
@@ -75,12 +102,20 @@ describe("structured response parsing", () => {
     expect(parsed.followUpQuestions).toEqual(["What versions?"]);
   });
 
-  it("rejects an excerpt that is not present in fetched source text", () => {
+  it("requires an excerpt for every accepted learning", () => {
     expect(() => parseLearnings(
-      '{"learnings":[{"text":"Funding fact","sourceUrls":["https://source.test"],"excerpt":"invented funding passage"}],"followUpQuestions":[]}',
+      '{"learnings":[{"text":"Funding fact","sourceUrls":["https://source.test"]}],"followUpQuestions":[]}',
       ["https://source.test"],
-      { "https://source.test": "This fetched page is about gardening and soil." },
+      { "https://source.test": "A fetched funding page." },
     )).toThrow(/excerpt/i);
+  });
+
+  it("rejects an excerpt that is not present in every cited source", () => {
+    expect(() => parseLearnings(
+      '{"learnings":[{"text":"Funding fact","sourceUrls":["https://a.test","https://b.test"],"excerpt":"funding passage"}],"followUpQuestions":[]}',
+      ["https://a.test", "https://b.test"],
+      { "https://a.test": "funding passage", "https://b.test": "gardening page" },
+    )).toThrow(/every cited source/i);
   });
 
   it("parses clarification ids with dedup", () => {

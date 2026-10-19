@@ -77,8 +77,9 @@ export function parseLearnings(text: string, allowedSourceUrls: string[] = [], f
       const sourceUrls = [...new Set<string>(Array.isArray(entry.sourceUrls) ? (entry.sourceUrls as string[]) : [])]
         .filter((url) => typeof url === "string" && allowedUrls.has(url))
         .slice(0, 5);
-      if (excerpt && !sourceUrls.some((url) => fetchedTextByUrl[url]?.includes(excerpt))) {
-        throw new Error("Learning excerpt was not found in fetched source text.");
+      if (!excerpt) throw new Error("Learning excerpt is required for fetched evidence.");
+      if (sourceUrls.length === 0 || sourceUrls.some((url) => !fetchedTextByUrl[url]?.includes(excerpt))) {
+        throw new Error("Learning excerpt was not found in every cited source text.");
       }
       return {
         text: entry.text.trim(),

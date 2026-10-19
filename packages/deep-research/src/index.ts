@@ -2,7 +2,7 @@ export * from "./Concurrency";
 export * from "./Events";
 export * from "./Json";
 export { planPrompt, subQuestionPrompt, clarificationPrompt, learningsPrompt, answerPrompt, reportPrompt, repairPrompt } from "./Prompts";
-export { getSearchProvider, setSearchProvider, createDdgProvider, createBingProvider, createFailoverProvider, parseDdgHtml, parseBingHtml, normalizeSearchResults, canonicalizeUrl, rankSearchResults } from "./Search";
+export { getSearchProvider, setSearchProvider, createDdgProvider, createBingProvider, createFailoverProvider, parseDdgHtml, parseBingHtml, parseBingRss, normalizeSearchResults, canonicalizeUrl, rankSearchResults } from "./Search";
 export { scrapeArticle, scrapeMarkdown, extractMarkdown, MAX_MARKDOWN_LENGTH } from "./Scrape";
 export { extractPublishDate } from "./Dates";
 export { enforceReport, isGrounded, isAnalysisSentence, segmentReport, citationUrls, normalizeCitation } from "./Verify";

@@ -148,7 +148,17 @@ export function resolveBingUrl(href: string): string {
   return href;
 }
 
-/** Parse Bing organic results (`li.b_algo`) into normalized SearchResult[]. */
+export function parseBingRss(xml: string): SearchResult[] {
+  const dom = new JSDOM(xml, { contentType: "text/xml" });
+  const entries = Array.from(dom.window.document.querySelectorAll("item")).map((item) => ({
+    title: item.querySelector("title")?.textContent ?? "",
+    url: item.querySelector("link")?.textContent ?? "",
+    snippet: item.querySelector("description")?.textContent ?? "",
+  }));
+  return normalizeSearchResults(entries, 10);
+}
+
+
 export function parseBingHtml(html: string): SearchResult[] {
   const dom = new JSDOM(html);
   const doc = dom.window.document;
@@ -187,7 +197,17 @@ async function bingHtml(query: string, signal?: AbortSignal): Promise<SearchResu
     signal: signal ?? AbortSignal.timeout(20_000),
   });
   if (!response.ok) throw new Error(`Bing returned HTTP ${response.status}.`);
-  return parseBingHtml(await response.text());
+  const body = await response.text();
+  const htmlResults = parseBingHtml(body);
+  if (htmlResults.length > 0) return htmlResults;
+  const rssUrl = new URL("https://www.bing.com/search");
+  rssUrl.searchParams.set("q", query);
+  rssUrl.searchParams.set("format", "rss");
+  const rssResponse = await fetch(rssUrl, { headers: { "User-Agent": UA, Accept: "application/rss+xml, application/xml" }, redirect: "follow", signal: signal ?? AbortSignal.timeout(20_000) });
+  if (!rssResponse.ok) throw new Error(`Bing RSS returned HTTP ${rssResponse.status}.`);
+  const rssResults = parseBingRss(await rssResponse.text());
+  if (rssResults.length === 0) throw new Error("Bing returned no organic results in HTML or RSS.");
+  return rssResults;
 }
 
 export function createBingProvider(): SearchProvider {

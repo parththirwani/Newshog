@@ -1,6 +1,6 @@
 # Evaluation results
 
-Status: checkpoint 5 in progress. Replay now calls the production selector without fixture relevance labels, measures subquestion coverage from matched evidence, and validates excerpts against fetched text. Live provider comparison remains pending.
+Status: checkpoint 6 in progress. Bing RSS fallback now recovers parsed results when HTML is challenged; excerpt validation is fail-closed per cited source. Live quality remains unverified.
 
 ## Run metadata
 
@@ -8,7 +8,7 @@ Status: checkpoint 5 in progress. Replay now calls the production selector witho
 | --- | --- | --- |
 | Date and `as_of` | 2026-10-20 / 2026-10-20 | Pending |
 | Commit | `0b372d9` baseline | Pending checkpoint 5 |
-| Search provider/version | Fixture pools; current DDG HTML + Bing HTML observed | DDG/Bing HTML, 2 queries each: 0 parsed results; DDG 166 ms median, Bing 646 ms median |
+| Search provider/version | Fixture pools; current DDG HTML + Bing HTML observed | DDG/Bing HTML+RSS, 2 queries each: DDG 0 parsed; Bing 10 parsed/query via RSS fallback; median DDG 164 ms, Bing 913 ms |
 | Model/version | No paid LLM in replay | Pending |
 | Benchmark revision | v1, 12 cases, 4 held out | v1 |
 | Trace location | `plans/deep-research/traces/baseline-replay.json` | `plans/deep-research/traces/candidate-replay.json` |
@@ -50,7 +50,7 @@ The release gates remain active and the current candidate is not release-ready. 
 - Zero empty/zero-source completed runs: PASS in the production status path by `evidenceComplete`; not yet verified against a database integration run.
 - Cancellation, SSRF, queue persistence, and existing suites: PASS per the workspace rerun (35 deep-research tests, 149 worker tests, 226 web tests). The previously reported `vi.hoisted` web-test blocker no longer reproduces.
 - Build: PASS (`bun run build`). Lint: BLOCKED by existing interactive `next lint` configuration prompt under both normal and `CI=1` invocation; no lint result is claimed.
-- Live provider/model cost and latency: provider comparison probe ran 2 topical queries through DDG and Bing. Both produced 0 parsed results in this workspace; median observed latency was DDG 166 ms and Bing 646 ms. No paid OpenRouter end-to-end benchmark was run, so no live answer-quality or model-cost result is claimed.
+- Live provider/model cost and latency: provider comparison probe ran 2 topical queries through DDG and Bing. DDG produced 0 parsed results; Bing produced 10 parsed results per query through the RSS fallback, but the top results were mostly listicles/market pages and no end-to-end answer was run. Median observed latency was DDG 164 ms and Bing 913 ms. No paid OpenRouter end-to-end benchmark was run, so no live answer-quality or model-cost result is claimed.
 - `plans/deep-research/traces/` is generated replay output and remains untracked; it contains only public fixture metadata and no credentials.
 
-Checkpoint 5: NOT RELEASE-READY. The next experiment is to add production search-attempt traces and a diversity-aware ranker, then run the same held-out cases with fetched fixtures and a separately versioned live opt-in subset. The current implementation and evidence are committed, but the task's all-gates success condition is not met.
+Checkpoint 6: NOT RELEASE-READY. The Bing RSS fallback improves retrieval availability but not yet demonstrated relevance. Next experiment: run a bounded live end-to-end IAM case through Bing RSS, record fetched evidence, claims, cost, and latency, then compare against the same case through any available alternative provider.
