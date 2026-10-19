@@ -9,7 +9,7 @@ Status: checkpoint 6 in progress. Bing RSS fallback now recovers parsed results 
 | Date and `as_of` | 2026-10-20 / 2026-10-20 | Pending |
 | Commit | `0b372d9` baseline | Pending checkpoint 5 |
 | Search provider/version | Fixture pools; current DDG HTML + Bing HTML observed | DDG/Bing HTML+RSS, 2 queries each: DDG 0 parsed; Bing 10 parsed/query via RSS fallback; median DDG 164 ms, Bing 913 ms |
-| Model/version | No paid LLM in replay | Pending |
+| Model/version | No paid LLM in replay | OpenRouter configured model, bounded live IAM run; 22,412 prompt + 4,978 completion tokens; provider price not available in trace |
 | Benchmark revision | v1, 12 cases, 4 held out | v1 |
 | Trace location | `plans/deep-research/traces/baseline-replay.json` | `plans/deep-research/traces/candidate-replay.json` |
 
@@ -50,7 +50,7 @@ The release gates remain active and the current candidate is not release-ready. 
 - Zero empty/zero-source completed runs: PASS in the production status path by `evidenceComplete`; not yet verified against a database integration run.
 - Cancellation, SSRF, queue persistence, and existing suites: PASS per the workspace rerun (35 deep-research tests, 149 worker tests, 226 web tests). The previously reported `vi.hoisted` web-test blocker no longer reproduces.
 - Build: PASS (`bun run build`). Lint: BLOCKED by existing interactive `next lint` configuration prompt under both normal and `CI=1` invocation; no lint result is claimed.
-- Live provider/model cost and latency: provider comparison probe ran 2 topical queries through DDG and Bing. DDG produced 0 parsed results; Bing produced 10 parsed results per query through the RSS fallback, but the top results were mostly listicles/market pages and no end-to-end answer was run. Median observed latency was DDG 164 ms and Bing 913 ms. No paid OpenRouter end-to-end benchmark was run, so no live answer-quality or model-cost result is claimed.
+- Live provider/model cost and latency: provider comparison probe ran 2 topical queries through DDG and Bing. DDG produced 0 parsed results; Bing produced 10 parsed results per query through the RSS fallback, but the top results were mostly listicles/market pages. A bounded live IAM end-to-end run completed in 59,062 ms, used 22,412 prompt and 4,978 completion tokens, fetched 2 accepted sources, and returned a 1,374-character report. Verification removed 2 claims and flagged low confidence. Provider price was not available, so cost is unreported rather than estimated.
 - `plans/deep-research/traces/` is generated replay output and remains untracked; it contains only public fixture metadata and no credentials.
 
-Checkpoint 6: NOT RELEASE-READY. The Bing RSS fallback improves retrieval availability but not yet demonstrated relevance. Next experiment: run a bounded live end-to-end IAM case through Bing RSS, record fetched evidence, claims, cost, and latency, then compare against the same case through any available alternative provider.
+Checkpoint 6: NOT RELEASE-READY. The Bing RSS fallback recovers sources and the bounded live IAM run completed, but the report was low-confidence, search relevance remained weak, and no independent provider comparison or claim-level live scoring was run. Next experiment: add trace persistence for provider attempts and run one independent-provider/live-source comparison with sampled claim support.
