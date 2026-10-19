@@ -218,8 +218,8 @@ async function analyzeSearchQuery(args: {
       purpose: "extract_learnings",
     });
       deps.emit.emit("content.processing.completed", { query: searchQuery.query });
-      if (extracted.missingScopes.length) deps.emit.emit("warning", { message: `Evidence extraction omitted required scope(s): ${extracted.missingScopes.join(", ")}` });
-    for (const learning of extracted.learnings) deps.emit.emit("learning.created", { query: searchQuery.query, learning });
+      for (const reason of extracted.rejectionReasons) deps.emit.emit("evidence.rejected", { query: searchQuery.query, reason });
+      for (const learning of extracted.learnings) deps.emit.emit("learning.created", { query: searchQuery.query, learning });
     for (const question of extracted.followUpQuestions) deps.emit.emit("follow_up.created", { query: searchQuery.query, question });
     deps.emit.emit("cost.updated", {
       promptTokens: deps.budget.promptTokens,
