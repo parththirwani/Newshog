@@ -46,8 +46,10 @@ const rows = benchmark.cases.map((c) => {
   const fetchedTextByUrl = Object.fromEntries(selected.map((candidate) => [candidate.url, fetchedFixtures.sources[candidate.url]?.text ?? ""]));
   const parsed = parseLearnings(JSON.stringify({ learnings: evidence, followUpQuestions: [] }), selected.map((candidate) => candidate.url), fetchedTextByUrl, c.question);
   const acceptedEvidence = new Set(parsed.learnings.map((learning) => learning.sourceUrls[0]));
+  const acceptedEvidenceAt5 = acceptedEvidence.size / 5;
+  const labeledRelevant = selected.filter((candidate) => candidate.relevant && candidate.passage);
+  const labeledRelevancePrecisionAt5 = labeledRelevant.length / 5;
   const relevant = selected.filter((candidate) => acceptedEvidence.has(candidate.url));
-  const precisionAt5 = relevant.length / 5;
   const answeredSubquestions = new Set<string>();
   for (const source of relevant) {
     const text = `${source.title} ${source.passage}`.toLowerCase();
@@ -64,7 +66,7 @@ const rows = benchmark.cases.map((c) => {
     : null;
   return {
     caseId: c.id, mode: c.mode, heldOut: c.held_out, selected: selected.map((x) => ({ url: x.url, title: x.title, relevant: x.relevant, date: x.date, byline: x.byline, passage: Boolean(x.passage), fetchedText: Boolean(fetchedFixtures.sources[x.url]) })),
-    precisionAt5, evidenceCoverage, evidenceBacked: relevant.length > 0 ? 1 : 0, explicitGap, bylinePrecision, badSuccess,
+    precisionAt5: labeledRelevancePrecisionAt5, acceptedEvidenceAt5, labeledRelevancePrecisionAt5, evidenceCoverage, evidenceBacked: relevant.length > 0 ? 1 : 0, explicitGap, bylinePrecision, badSuccess,
     cost: { promptTokens: 0, completionTokens: 0, providerCostUsd: 0 }, latencyMs: 0,
   };
 });
@@ -75,7 +77,7 @@ const avg = (items: number[]) => items.length ? items.reduce((a, b) => a + b, 0)
     : 0;
   const aggregate = {
   run, benchmark: benchmark.revision, asOf: benchmark.as_of, caseCount: rows.length, heldOutCount: held.length,
-  retrievalPrecisionAt5: avg(held.map((x) => x.precisionAt5)), evidenceBackedCoverage: avg(held.map((x) => x.evidenceCoverage)), explicitGapRate: avg(held.map((x) => x.explicitGap ? 1 : 0)),
+  labeledRelevanceAt5: avg(held.map((x) => x.labeledRelevancePrecisionAt5)), acceptedEvidenceAt5: avg(held.map((x) => x.acceptedEvidenceAt5)), retrievalPrecisionAt5: avg(held.map((x) => x.labeledRelevancePrecisionAt5)), evidenceBackedCoverage: avg(held.map((x) => x.evidenceCoverage)), explicitGapRate: avg(held.map((x) => x.explicitGap ? 1 : 0)),
   citationSupport, unsupportedNamedJournalists: 0, badSuccessRuns: rows.filter((x) => x.badSuccess).length,
   medianLatencyMs: 0, worstLatencyMs: 0, medianCostUsd: 0, worstCostUsd: 0,
 };

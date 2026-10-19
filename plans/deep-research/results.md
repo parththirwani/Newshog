@@ -1,6 +1,6 @@
 # Evaluation results
 
-Status: checkpoint 6 in progress. Bing RSS fallback now recovers parsed results when HTML is challenged; excerpt validation is fail-closed per cited source. Live quality remains unverified.
+Status: checkpoint 7 in progress. Replay metrics are now separated into labeled relevance, accepted fetched evidence, and passage validation. Live generated-claim support remains unmeasured.
 
 ## Run metadata
 
@@ -19,7 +19,8 @@ Labels are manually inspected fixture labels, not a closed URL allowlist. Replay
 
 | Measure | Baseline | Candidate | Gate | Notes |
 | --- | ---: | ---: | ---: | --- |
-| Retrieval precision at 5 | 0.40 held out | 0.50 production selector replay | >= 0.70 held out | Candidate now calls `rankSearchResults` directly; fixture relevance labels are used only after selection for scoring. |
+| Retrieval relevance precision at 5 (labeled evaluator only) | 0.40 held out | 0.50 production selector replay | >= 0.70 held out | Labels are used only to score selected candidates after production selection; this is not a production-visible signal. |
+| Accepted fetched evidence at 5 | 0.35 | 0.45 | Report separately | Evidence accepted by production parser against fetched-fixture text; do not conflate with relevance. |
 | Evidence-backed subquestion coverage | 0.208 | 0.208 | >= 0.80 or truthful gaps | Coverage is now based on subquestion token matches in accepted fixture passages, not source count. |
 | Citation support | 1.00 fetched-fixture passage support | 1.00 fetched-fixture passage support | >= 0.95 sampled claims | Replay now uses the separate `fetched-fixtures.v1.json` corpus and fails closed when a passage is absent. This is passage validation, not generated-answer claim sampling. |
 | Unsupported named journalists/material numbers | 0 | 0 | 0 | Fixture labels contain no unsupported accepted claims. |
@@ -29,7 +30,7 @@ Labels are manually inspected fixture labels, not a closed URL allowlist. Replay
 
 ## Per-case results
 
-Held-out baseline precision: `article-04` 0.60, `standalone-04` 0.60, `byline-02` 0.40, `negative-02` 0.00. Candidate production-selector replay: 1.00, 0.60, 0.40, 0.00. Held-out evidence coverage is 0.208 for both runs under the new subquestion-level score. The largest measured loss remains retrieval selection/off-topic pollution, followed by insufficient subquestion evidence.
+Held-out baseline labeled relevance: `article-04` 0.40, `standalone-04` 0.60, `byline-02` 0.40, `negative-02` 0.00. Candidate labeled relevance: 0.80, 0.60, 0.40, 0.00. Accepted fetched evidence at five: baseline 0.35, candidate 0.45. Held-out evidence coverage is 0.208 for both runs under the current subquestion score.
 
 ## Failure review
 
@@ -44,16 +45,16 @@ Held-out baseline precision: `article-04` 0.60, `standalone-04` 0.60, `byline-02
 The release gates remain active and the current candidate is not release-ready. The next checkpoint is intentionally open until the production replay and live comparison are complete.
 - Benchmark exists with 12 labeled cases and four held out: PASS.
 - Deterministic replay works and emits sanitized traces: PASS, now applying production ranking and evidence parsing. Fetched-fixture passage support is 1.00; generated-answer claim support remains unmeasured.
-- Held-out retrieval precision >= 0.70: FAIL — candidate 0.50 (baseline 0.40).
+- Held-out retrieval relevance precision >= 0.70: FAIL — candidate 0.50 (baseline 0.40); accepted fetched evidence at five is 0.45 (baseline 0.35).
 - Evidence-backed coverage >= 0.80 or truthful gaps: FAIL — production-selector replay is 0.208 under subquestion-level scoring; production now carries `scope`, `coveredScopes`, and `missingScopes` through extraction and outcomes, with deterministic integration coverage. Live quality still needs a rerun using the new ledger.
 - Citation support >= 0.95: PASS for fetched-fixture passage validation; generated-answer claim sampling remains pending.
 - Zero empty/zero-source completed runs: PASS in the production status path by `evidenceComplete`; not yet verified against a database integration run.
 - Cancellation, SSRF, queue persistence, and existing suites: PASS per the workspace rerun (35 deep-research tests, 149 worker tests, 226 web tests). The previously reported `vi.hoisted` web-test blocker no longer reproduces.
 - Build: PASS (`bun run build`). Lint: BLOCKED by existing interactive `next lint` configuration prompt under both normal and `CI=1` invocation; no lint result is claimed.
-- Live provider/model cost and latency: provider comparison probe ran 2 topical queries through DDG and Bing. DDG produced 0 parsed results; Bing produced 10 parsed results per query through the RSS fallback, but the top results were mostly listicles/market pages. A bounded live IAM end-to-end run completed in 59,062 ms, used 22,412 prompt and 4,978 completion tokens, fetched 2 accepted sources, and returned a 1,374-character report. Verification removed 2 claims and flagged low confidence. Provider price was not available, so cost is unreported rather than estimated.
+- Live provider/model cost and latency: the new bounded scope-ledger rerun completed in 25,331 ms with 17,249 prompt and 1,164 completion tokens. DDG returned zero results; Bing returned 9–10 results per query. The run fetched no accepted sources, covered 0 scopes, left 1 scope missing, and marked the report low-confidence after removing 4 factual claims. This confirms provider availability improved via Bing but end-to-end evidence quality still failed.
 - `plans/deep-research/traces/` is generated replay output and remains untracked; it contains only public fixture metadata and no credentials.
 - Provider attempt traces are now emitted as ordered `search.trace` events with provider, attempt, result count, failure reason, and latency; they are available to the existing event/audit pipeline but not yet persisted into replay traces.
 - Research learnings now carry a scope, and final outcomes expose covered and missing scopes for per-thread evidence accounting.
 - `packages/deep-research/evals/fetched-fixtures.v1.json` is a sanitized, public-passage corpus generated from the benchmark labels for deterministic excerpt-presence checks; it is not an independent web capture and cannot establish source correctness beyond the fixture text.
 
-Checkpoint 6: NOT RELEASE-READY. The Bing RSS fallback recovers sources and the bounded live IAM run completed, but the report was low-confidence, search relevance remained weak, and no independent provider comparison or claim-level live scoring was run. Next experiment: add trace persistence for provider attempts and run one independent-provider/live-source comparison with sampled claim support.
+Checkpoint 7: NOT RELEASE-READY. Replay metrics are now correctly separated, but no generated-answer claim sample against real captured pages has been scored. Next experiment: capture a bounded live report with fetched page text, score every surviving factual claim against its cited passage, and persist the sanitized claim ledger.
