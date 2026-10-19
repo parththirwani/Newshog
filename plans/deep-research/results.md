@@ -1,6 +1,6 @@
 # Evaluation results
 
-Status: baseline captured; checkpoint 2 retrieval changes implemented and deterministic tests pass. Overall gates remain unmet. No live provider run is claimed as a benchmark result.
+Status: checkpoint 4 evaluation completed. Deterministic replay is reproducible; production test/build checks are recorded below. Release gates remain unmet, so this is not a success claim.
 
 ## Run metadata
 
@@ -42,4 +42,16 @@ Held-out baseline precision: `article-04` 0.60, `standalone-04` 0.60, `byline-02
 
 Checkpoint 1: PASS — 12 cases, labels, four held-out cases, sanitized traces, and deterministic replay command exist and run.
 
-The next candidate also fails closed when scrape returns only a search snippet, exposes `evidenceComplete`, `acceptedSourceUrls`, and `statusReason`, persists low-confidence rather than completed for zero accepted evidence, and counts only accepted fetched URLs in article coverage. Deterministic verification: 58 tests pass. The live IAM diagnostic remains unrun in this pass; the available HTML probe found DDG zero parsed results and Bing off-topic results.
+## Final gate decision
+
+- Benchmark exists with 12 labeled cases and four held out: PASS.
+- Deterministic replay works and emits sanitized traces: PASS.
+- Held-out retrieval precision >= 0.70: FAIL — candidate 0.50 (baseline 0.40).
+- Evidence-backed coverage >= 0.80 or truthful gaps: FAIL — replay 0.75; status code now records low confidence for zero accepted evidence, but full subquestion coverage measurement is not yet wired.
+- Citation support >= 0.95: PASS only for fixture passage checks; no live generated-claim sample was run.
+- Zero empty/zero-source completed runs: PASS in the production status path by `evidenceComplete`; not yet verified against a database integration run.
+- Cancellation, SSRF, queue persistence, existing unit tests: PASS for the exercised deterministic suites; web route test invocation is incompatible with the repository's Bun/Vitest version (`vi.hoisted` unavailable).
+- Build: PASS (`bun run build`). Lint: BLOCKED by existing interactive `next lint` configuration prompt under both normal and `CI=1` invocation; no lint result is claimed.
+- Live provider/model cost and latency: BLOCKED for this evaluation. DDG/Bing HTML were probed; no paid OpenRouter benchmark was run. No cost or quality result is invented.
+
+Checkpoint 4: NOT RELEASE-READY. The concrete next experiment is to add production search-attempt traces and a diversity-aware ranker, then run the same held-out cases with fetched fixtures and a separately versioned live opt-in subset. The current implementation and evidence are committed, but the task's all-gates success condition is not met.

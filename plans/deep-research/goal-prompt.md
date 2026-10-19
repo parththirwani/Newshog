@@ -1,0 +1,13 @@
+# Paste into `/goal`
+
+Run this from the Newshog repository root. The text below is the goal prompt; the other Markdown files in this directory are its detailed task contract.
+
+```text
+/goal Rebuild Newshog's deep research quality for both article PR analysis and standalone research. Read plans/deep-research/README.md first, then requirements.md, architecture.md, evaluation.md, and deliverables.md in that directory. Follow their work loop and exit gates; fill in plans/deep-research/results.md and decisions.md with measured evidence. Keep working across turns: establish a reproducible baseline, identify the largest quality loss, make a focused change, rerun the same evaluation, inspect failures, and repeat until all exit gates pass or a concrete external blocker prevents further progress. Do not declare success from passing unit tests, nonempty prose, or citations alone.
+
+Commit at verified checkpoints with narrow, descriptive commits: (1) benchmark cases, labels, baseline, and replay harness; (2) search reliability, URL handling, and candidate ranking; (3) fetched evidence, claim support, status rules, and article integration; (4) final evaluation results, decisions, documentation, and remaining fixes. If the architecture changes, split or combine checkpoints by coherent behavior, but commit after each tested milestone. Run the relevant tests before every commit. Stage only files belonging to this task; inspect git status and diff before committing. Preserve existing unrelated changes, including the current .gitignore modification. Never commit secrets, private user content, or raw sensitive traces. Do not push or deploy.
+
+Preserve queue, cancellation, quota, security, and API behavior unless a tested change is required. Use bounded live experiments and record provider cost and latency. If a provider credential or external permission is unavailable, continue with deterministic work and available providers, document the exact gap and next required input, and do not invent benchmark results. At each checkpoint, update results.md or decisions.md with what the evidence showed and choose the next experiment. Complete this goal only when the evaluation.md gates and deliverables.md checklist are satisfied and the final report names the commits, tests, before/after metrics, operational requirements, and remaining risks. If a gate remains unmet, leave the goal active and continue with the next defensible experiment; if genuinely blocked, report the blocker and what would unlock progress.
+```
+
+The agent may write implementation code and commit task files. This prompt does not authorize a push, deployment, quota change, or billing change.

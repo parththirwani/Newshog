@@ -18,4 +18,11 @@ Existing code asks the model for excerpts and filters source URLs to the candida
 
 ## Compatibility and operations
 
-No schema change has been made. Queue, cancellation, SSRF protection, and existing APIs are untouched. Replay is deterministic and opt-in live smoke remains separate. The existing `.gitignore` modification is unrelated and remains unstaged. Rollback for checkpoint 1 is reverting only the benchmark/evaluation files; no credentials or private traces are committed.
+No schema migration was required. Production code preserves queue, cancellation, SSRF checks, persistence, and API fields; `statusReason` and evidence fields are additive. Required environment variables remain `DDG_SEARCH_URL`, optional `JINA_API_KEY`, `OPENROUTER_API_KEY`, and `MAX_RUN_TOKENS`; values must never enter logs/docs. The default remains DDG with Bing fallback, but live probing showed DDG HTTP 202/zero parsed results and Bing HTTP 200/off-topic results for IAM queries. When both fail or produce no accepted evidence, the run is now low-confidence rather than completed. Rollback is the four task commits below; leave `.gitignore` untouched.
+
+## Checkpoint history
+
+1. `0b372d9` — benchmark cases, labels, replay harness, baseline traces.
+2. `6a3d42c` — URL canonicalization, collision ranking, snippet-only rejection.
+3. `4d221fb` — evidence completeness, low-confidence status, accepted-source article coverage.
+4. `4e8bc85` — API compatibility field for status reason.
