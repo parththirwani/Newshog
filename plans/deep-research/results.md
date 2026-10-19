@@ -53,7 +53,7 @@ The release gates remain active and the current candidate is not release-ready. 
 - Build: PASS (`bun run build`). Lint: BLOCKED by existing interactive `next lint` configuration prompt under both normal and `CI=1` invocation; no lint result is claimed.
 - Broad trace rerun after instrumentation: DDG returned empty results; Bing returned 9–10 results but the ranked URLs were unrelated identity/social-science pages (Human Rights Watch, Wikipedia, Verywell Mind, IMDb, Stanford Encyclopedia). Fetch tracing shows several unrelated pages fetched successfully while one returned 403 and one had no content. No learnings or accepted evidence resulted. This identifies the largest current loss as retrieval relevance, before evidence extraction.
 - `plans/deep-research/traces/` is generated replay output and remains untracked; it contains only public fixture metadata and no credentials.
-- Service now emits `fetch.trace` for each selected candidate and `evidence.rejected` when extraction fails, so the next broad run can distinguish fetch failure from excerpt rejection.
+- Search ranking now hard-rejects observed generic identity/social-science collision domains and dictionary/calendar pages, preserving rejection reasons for audit. Focused search tests: 32 pass.
 - Research learnings now carry a scope, and final outcomes expose covered and missing scopes for per-thread evidence accounting.
 - `packages/deep-research/evals/fetched-fixtures.v1.json` is a sanitized, public-passage corpus generated from the benchmark labels for deterministic excerpt-presence checks; it is not an independent web capture and cannot establish source correctness beyond the fixture text.
 

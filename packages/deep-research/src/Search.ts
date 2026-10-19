@@ -44,6 +44,8 @@ function topicTokens(text: string): string[] {
   return [...new Set((text.toLowerCase().match(/[a-z0-9]{3,}/g) ?? []).filter((t) => !["the", "and", "for", "with", "from"].includes(t)))];
 }
 
+const COLLISION_PATTERNS = [/dictionary|glossary|definition|calendar|timeanddate/, /human rights watch|verywellmind|imdb\.com|wikipedia\.org|stanford\.edu|plato\.stanford/];
+
 export function rankSearchResults(query: string, entries: SearchResult[]): SearchResult[] {
   const tokens = topicTokens(query);
   return entries
@@ -51,13 +53,18 @@ export function rankSearchResults(query: string, entries: SearchResult[]): Searc
       const haystack = `${entry.title} ${entry.snippet} ${entry.url}`.toLowerCase();
       const reasons: string[] = [];
       let score = tokens.filter((token) => haystack.includes(token)).length * 10;
-      if (/dictionary|glossary|definition|calendar|timeanddate/.test(haystack)) {
+      const collision = COLLISION_PATTERNS.find((pattern) => pattern.test(haystack));
+      if (collision) {
+        score -= 100;
+        reasons.push(`topic collision: ${collision.source}`);
+      }
+      if (/dictionary|glossary|definition|calendar|timeanddate/.test(haystack) && !collision) {
         score -= 100;
         reasons.push("topic collision");
       }
       if (/fund|raise|series|security|startup|report|coverage/.test(haystack)) score += 20;
       if (score <= 0 && reasons.length === 0) reasons.push("low topical relevance");
-      const failureReason = reasons.includes("topic collision") ? reasons.join(", ") : undefined;
+      const failureReason = reasons.some((reason) => reason.startsWith("topic collision")) ? reasons.join(", ") : undefined;
       return { entry: { ...entry, failureReason }, score, index };
     })
     .sort((a, b) => b.score - a.score || a.index - b.index)
