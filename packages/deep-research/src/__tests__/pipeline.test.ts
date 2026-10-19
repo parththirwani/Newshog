@@ -137,6 +137,14 @@ describe("structured response parsing", () => {
     )).toThrow(/every cited source/i);
   });
 
+  it("accepts mixed-source findings when each excerpt is local to its cited source", () => {
+    const parsed = parseLearnings(
+      '{"learnings":[{"text":"A funding fact","sourceUrls":["https://a.test"],"excerpt":"funding passage"},{"text":"A byline fact","sourceUrls":["https://b.test"],"excerpt":"reported by Alice"}],"followUpQuestions":[]}',
+      ["https://a.test", "https://b.test"],
+      { "https://a.test": "funding passage from article A", "https://b.test": "reported by Alice in article B" },
+    );
+    expect(parsed.learnings).toHaveLength(2);
+  });
   it("parses clarification ids with dedup", () => {
     const qs = parseClarificationQuestions(
       '{"questions":[{"id":"deployment","question":"Where?"},{"id":"deployment","question":"Scale?"}]}',
