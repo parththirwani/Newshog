@@ -97,6 +97,20 @@ describe("runResearch orchestration (no network, no LLM)", () => {
     expect(outcome.sources.every((s) => ["verified", "unverified", "failed"].includes(s.status))).toBe(true);
   });
 
+  it("does not turn a search snippet fallback into evidence", async () => {
+    const outcome = await runResearch(
+      { query: "q", depth: 1, breadth: 1, mode: "answer", skipClarification: true },
+      {
+        handler: { complete: async ({ messages }) => ({ text: planText(messages[messages.length - 1].content), model: "t", usage: { promptTokens: 1, completionTokens: 1 } }) },
+        emit: createEventEmitter(),
+        search: async () => [{ title: "x", url: "https://x.com", snippet: "snippet only" }],
+        scrape: async () => "snippet only",
+      },
+    );
+    expect(outcome.learnings).toHaveLength(0);
+    expect(outcome.sources).toHaveLength(0);
+  });
+
   it("returns truncated status with partial learnings when the token ceiling is hit", async () => {
     const budget = createTokenBudget(30); // tiny ceiling
     const events: string[] = [];
@@ -110,7 +124,7 @@ describe("runResearch orchestration (no network, no LLM)", () => {
       }),
     };
 
-let outcome: Awaited<ReturnType<typeof runResearch>>;
+    let outcome: Awaited<ReturnType<typeof runResearch>>;
     try {
       outcome = await runResearch(
         { query: "over budget", depth: 3, breadth: 3, mode: "answer", skipClarification: true },
@@ -118,11 +132,11 @@ let outcome: Awaited<ReturnType<typeof runResearch>>;
           handler,
           budget,
           emit: rec,
-          search: async (q) => [
+          search: async () => [
             { url: "https://a.com", title: "", snippet: "s" },
             { url: "https://b.com", title: "", snippet: "s" },
           ],
-          scrape: async (url) => "body text",
+          scrape: async () => "body text",
         },
       );
     } catch (err) {

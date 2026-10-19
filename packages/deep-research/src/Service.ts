@@ -20,7 +20,7 @@ import {
 import type { LlmHandler } from "./Llm";
 import { complete, createOpenRouterHandler, createTokenBudget, structuredCompletion } from "./Llm";
 import { scrapeMarkdown } from "./Scrape";
-import { getSearchProvider } from "./Search";
+import { getSearchProvider, rankSearchResults } from "./Search";
 import { enforceReport } from "./Verify";
 import type { RepairFn, Rewrite } from "./Verify";
 import type { ClarificationAnswer, ClarificationQuestion, DeepResearchInput, Learning, ResearchSource, SearchResult } from "./types";
@@ -147,6 +147,7 @@ async function analyzeSearchQuery(args: {
   let sources: SearchResult[];
   try {
     sources = await deps.search(searchQuery.query, { signal: deps.signal });
+    sources = rankSearchResults(searchQuery.query, sources);
     deps.emit.emit("search.completed", { query: searchQuery.query, sourceCount: sources.length });
     deps.emit.emit("sources.discovered", { query: searchQuery.query, urls: sources.map((s) => s.url) });
   } catch (error) {
@@ -161,14 +162,16 @@ async function analyzeSearchQuery(args: {
     if (!state.coveredQueries.includes(searchQuery.query)) state.coveredQueries.push(searchQuery.query);
   }
 
-  const selected = sources.slice(0, MAX_SOURCES_PER_QUERY);
+  const selected = sources.filter((source) => !source.failureReason).slice(0, MAX_SOURCES_PER_QUERY);
   const scraped = await mapWithConcurrency(selected, innerConcurrency, async (source) => {
     try {
-      return { ...source, markdown: await deps.scrape(source.url) };
+      const scrapeResult = await deps.scrape(source.url);
+      if (!scrapeResult.trim() || scrapeResult.trim() === source.snippet.trim()) throw new Error("No fetched source text; search snippet is not evidence.");
+      return { ...source, markdown: scrapeResult };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       deps.emit.emit("warning", { message: `Could not scrape ${source.url}: ${message}` });
-      return { ...source, markdown: source.snippet };
+      return { ...source, markdown: "", failureReason: message };
     }
   });
   for (const source of scraped) {

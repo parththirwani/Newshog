@@ -28,6 +28,16 @@ describe("buildCoverageSignal", () => {
     expect(sig?.latestSourceDate).toBe("2026-08-10T00:00:00.000Z");
   });
 
+  it("deduplicates repeated fetched URLs in coverage", () => {
+    const sig = buildCoverageSignal(
+      ["https://b.com/coverage", "https://b.com/coverage"],
+      { "https://b.com/coverage": "2026-08-01T00:00:00.000Z" },
+      "https://article.com/story",
+      "2026-08-20T00:00:00.000Z",
+    );
+    expect(sig?.externalSourceCount).toBe(1);
+  });
+
   it("is false for precedes when no source predates the article", () => {
     const sig = buildCoverageSignal(visited, dates, "https://article.com/story", "2026-07-01T00:00:00.000Z");
     expect(sig?.precedesSubmittedArticle).toBe(false);

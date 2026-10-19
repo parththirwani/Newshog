@@ -1,6 +1,6 @@
 # Evaluation results
 
-Status: baseline captured and replay harness verified; implementation work continues. No live provider run is claimed as a benchmark result.
+Status: baseline captured; checkpoint 2 retrieval changes implemented and deterministic tests pass. Overall gates remain unmet. No live provider run is claimed as a benchmark result.
 
 ## Run metadata
 

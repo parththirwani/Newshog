@@ -41,7 +41,7 @@ export function buildCoverageSignal(
   articleUrl?: string,
   articlePublishedAt?: string | null,
 ): CoverageSignal | null {
-  const external = visitedUrls
+  const external = [...new Set(visitedUrls)]
     .filter((url) => url !== articleUrl)
     .filter((url) => sourceDates[url]);
   if (external.length === 0) {

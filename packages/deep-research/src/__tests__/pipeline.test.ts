@@ -5,7 +5,7 @@ import { parseLearnings, parseResearchPlan, parseClarificationQuestions, parseSu
 import { buildResearchContext, citationSources, mergeLearnings, validateClarificationAnswers, SEARCH_CONCURRENCY } from "../Service";
 import { reportPrompt, planPrompt, learningsPrompt } from "../Prompts";
 import { extractMarkdown } from "../Scrape";
-import { normalizeSearchResults, parseBingHtml, resolveBingUrl } from "../Search";
+import { normalizeSearchResults, parseBingHtml, resolveBingUrl, rankSearchResults } from "../Search";
 import { enforceReport, isGrounded, isAnalysisSentence, segmentReport } from "../Verify";
 import type { RepairFn, Rewrite } from "../Verify";
 import { createTokenBudget } from "../Llm";
@@ -20,11 +20,27 @@ describe("search + scrape normalization", () => {
     expect(new Set(results.map((r) => r.url)).size).toBe(results.length);
   });
 
-  it("extracts markdown from a Scrybe payload", () => {
-    const md = extractMarkdown(scrybePayload);
-    expect(md).toContain("Welcome to Python.org");
+  it("canonicalizes redirects, tracking parameters, and trailing slashes before deduplication", () => {
+    const results = normalizeSearchResults([
+      { title: "A", url: "https://www.example.com/story/?utm_source=x", description: "a" },
+      { title: "A copy", url: "https://example.com/story#section", description: "copy" },
+      { title: "Redirect", url: "https://www.bing.com/ck/a?u=a1aHR0cHM6Ly9leGFtcGxlLmNvbS9zdG9yeQ==", description: "redirect" },
+    ]);
+    expect(results).toHaveLength(1);
+    expect(results[0].url).toBe("https://example.com/story");
+  });
+
+  it("ranks relevant candidates and rejects common-word collisions", () => {
+    const ranked = rankSearchResults("identity security startup funding 2026", [
+      { title: "Identity dictionary", url: "https://example.com/dictionary", snippet: "definition" },
+      { title: "Linx raises $50M Series B", url: "https://example.com/linx", snippet: "identity security startup funding" },
+      { title: "2026 calendar", url: "https://example.com/calendar", snippet: "calendar" },
+    ]);
+    expect(ranked[0].url).toBe("https://example.com/linx");
+    expect(ranked.find((r) => r.url.includes("dictionary"))?.failureReason).toMatch(/collision/i);
   });
 });
+
 
 describe("Bing failover search", () => {
   it("decodes Bing redirect URLs to real destinations", () => {

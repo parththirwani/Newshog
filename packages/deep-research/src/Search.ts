@@ -19,21 +19,69 @@ function validUrl(value: string): boolean {
   }
 }
 
+export function canonicalizeUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (url.hostname.endsWith("bing.com") && url.pathname.startsWith("/ck/")) {
+      const resolved = resolveBingUrl(value);
+      if (resolved !== value) return canonicalizeUrl(resolved);
+      return null;
+    }
+    url.hash = "";
+    url.hostname = url.hostname.toLowerCase().replace(/^www\./, "");
+    for (const key of [...url.searchParams.keys()]) {
+      if (/^(utm_|ref$|source$|campaign$)/i.test(key)) url.searchParams.delete(key);
+    }
+    url.pathname = url.pathname.replace(/\/+/g, "/").replace(/\/$/, "") || "/";
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function topicTokens(text: string): string[] {
+  return [...new Set((text.toLowerCase().match(/[a-z0-9]{3,}/g) ?? []).filter((t) => !["the", "and", "for", "with", "from"].includes(t)))];
+}
+
+export function rankSearchResults(query: string, entries: SearchResult[]): SearchResult[] {
+  const tokens = topicTokens(query);
+  return entries
+    .map((entry, index) => {
+      const haystack = `${entry.title} ${entry.snippet} ${entry.url}`.toLowerCase();
+      const reasons: string[] = [];
+      let score = tokens.filter((token) => haystack.includes(token)).length * 10;
+      if (/dictionary|glossary|definition|calendar|timeanddate/.test(haystack)) {
+        score -= 100;
+        reasons.push("topic collision");
+      }
+      if (/fund|raise|series|security|startup|report|coverage/.test(haystack)) score += 20;
+      if (score <= 0 && reasons.length === 0) reasons.push("low topical relevance");
+      const failureReason = reasons.includes("topic collision") ? reasons.join(", ") : undefined;
+      return { entry: { ...entry, failureReason }, score, index };
+    })
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map(({ entry }) => entry);
+}
+
 const BING_URL = "https://www.bing.com/search";
 
-/** Shape raw {title,url,description/snippet} entries into deduped, validated SearchResult[]. */
+
 export function normalizeSearchResults(
   entries: Array<{ title?: string; url?: string; description?: string; snippet?: string }>,
   maximum = 10,
 ): SearchResult[] {
   const seen = new Set<string>();
   return entries
-    .map((entry) => ({
-      title: String(entry?.title ?? "").trim(),
-      url: String(entry?.url ?? "").trim(),
-      snippet: String(entry?.snippet ?? entry?.description ?? "").trim(),
-    }))
-    .filter((entry) => entry.url && validUrl(entry.url) && !seen.has(entry.url) && seen.add(entry.url))
+    .map((entry) => {
+      const url = canonicalizeUrl(String(entry?.url ?? ""));
+      return {
+        title: String(entry?.title ?? "").trim(),
+        url: url ?? "",
+        snippet: String(entry?.snippet ?? entry?.description ?? "").trim(),
+      };
+    })
+    .filter((entry) => entry.url && !seen.has(entry.url) && seen.add(entry.url))
     .slice(0, maximum);
 }
 

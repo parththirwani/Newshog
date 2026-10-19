@@ -2,6 +2,24 @@ export interface SearchResult {
   title: string;
   url: string;
   snippet: string;
+  provider?: string;
+  rank?: number;
+  failureReason?: string;
+}
+
+export interface SearchTrace {
+  provider: string;
+  query: string;
+  attempt: number;
+  resultCount: number;
+  failureReason?: string;
+}
+
+export interface CandidateScore {
+  url: string;
+  score: number;
+  accepted: boolean;
+  reasons: string[];
 }
 
 export interface Learning {

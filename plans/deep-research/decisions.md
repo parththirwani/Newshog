@@ -1,6 +1,6 @@
 # Architecture decisions
 
-Status: checkpoint 1 complete; provider and production ranking decisions remain open until the next measured experiment.
+Status: checkpoint 2 retrieval changes implemented and tested; provider selection and final evidence/status architecture remain open.
 
 ## Search provider
 
