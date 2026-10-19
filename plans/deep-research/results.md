@@ -48,7 +48,7 @@ The release gates remain active and the current candidate is not release-ready. 
 - Evidence-backed coverage >= 0.80 or truthful gaps: FAIL — production-selector replay is 0.208 under subquestion-level scoring; status code now records low confidence for zero accepted evidence.
 - Citation support >= 0.95: PASS only for fixture passage checks; no live generated-claim sample was run.
 - Zero empty/zero-source completed runs: PASS in the production status path by `evidenceComplete`; not yet verified against a database integration run.
-- Cancellation, SSRF, queue persistence, existing unit tests: PASS for the exercised deterministic suites; web route test invocation is incompatible with the repository's Bun/Vitest version (`vi.hoisted` unavailable).
+- Cancellation, SSRF, queue persistence, and existing suites: PASS per the workspace rerun (35 deep-research tests, 149 worker tests, 226 web tests). The previously reported `vi.hoisted` web-test blocker no longer reproduces.
 - Build: PASS (`bun run build`). Lint: BLOCKED by existing interactive `next lint` configuration prompt under both normal and `CI=1` invocation; no lint result is claimed.
 - Live provider/model cost and latency: provider comparison probe ran 2 topical queries through DDG and Bing. Both produced 0 parsed results in this workspace; median observed latency was DDG 166 ms and Bing 646 ms. No paid OpenRouter end-to-end benchmark was run, so no live answer-quality or model-cost result is claimed.
 - `plans/deep-research/traces/` is generated replay output and remains untracked; it contains only public fixture metadata and no credentials.
