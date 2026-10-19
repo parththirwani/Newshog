@@ -179,9 +179,13 @@ async function analyzeSearchQuery(args: {
     if (d) state.sourceDates[source.url] = d.toISOString();
   }
 
+  const fetchedTextByUrl: Record<string, string> = {};
   const contents = scraped
     .filter((source) => source.markdown)
-    .map((source) => `Source: ${source.url}\n${source.markdown}`)
+    .map((source) => {
+      fetchedTextByUrl[source.url] = source.markdown;
+      return `Source: ${source.url}\n${source.markdown}`;
+    })
     .join("\n\n")
     .slice(0, MAX_CONTEXT_LENGTH);
   if (!contents) {
@@ -192,7 +196,7 @@ async function analyzeSearchQuery(args: {
   try {
     const extracted = await structured(deps, {
       prompt: learningsPrompt(searchQuery.query, contents),
-      parser: (text) => parseLearnings(text, scraped.map((source) => source.url)),
+      parser: (text) => parseLearnings(text, scraped.map((source) => source.url), fetchedTextByUrl),
       purpose: "extract_learnings",
     });
     deps.emit.emit("content.processing.completed", { query: searchQuery.query });

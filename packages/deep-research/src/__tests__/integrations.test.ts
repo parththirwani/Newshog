@@ -81,7 +81,7 @@ describe("runResearch orchestration (no network, no LLM)", () => {
         budget,
         emit: rec,
         search: async (query) => [{ title: "a", url: "https://a.com", snippet: "snip" }],
-        scrape: async (url) => "The report says there is strong B2B article coverage here.",
+        scrape: async (url) => "The report says there is strong B2B coverage stats in this article.",
       },
     );
 

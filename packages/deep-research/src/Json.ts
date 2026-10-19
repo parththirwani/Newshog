@@ -62,7 +62,7 @@ export function parseResearchPlan(text: string): Array<{ query: string; research
  * excerpt the model quoted for each claim (grounding for the enforcement gate
  * in Verify.ts).
  */
-export function parseLearnings(text: string, allowedSourceUrls: string[] = []): {
+export function parseLearnings(text: string, allowedSourceUrls: string[] = [], fetchedTextByUrl: Record<string, string> = {}): {
   learnings: Learning[];
   followUpQuestions: string[];
 } {
@@ -74,11 +74,15 @@ export function parseLearnings(text: string, allowedSourceUrls: string[] = []): 
     .map((item) => {
       const entry = item as { text: string; sourceUrls?: unknown; excerpt?: unknown };
       const excerpt = typeof entry.excerpt === "string" ? entry.excerpt.trim().slice(0, 4000) : undefined;
+      const sourceUrls = [...new Set<string>(Array.isArray(entry.sourceUrls) ? (entry.sourceUrls as string[]) : [])]
+        .filter((url) => typeof url === "string" && allowedUrls.has(url))
+        .slice(0, 5);
+      if (excerpt && !sourceUrls.some((url) => fetchedTextByUrl[url]?.includes(excerpt))) {
+        throw new Error("Learning excerpt was not found in fetched source text.");
+      }
       return {
         text: entry.text.trim(),
-        sourceUrls: [...new Set<string>(Array.isArray(entry.sourceUrls) ? (entry.sourceUrls as string[]) : [])]
-          .filter((url) => typeof url === "string" && allowedUrls.has(url))
-          .slice(0, 5),
+        sourceUrls,
         ...(excerpt ? { excerpt } : {}),
       };
     })

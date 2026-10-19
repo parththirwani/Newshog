@@ -67,11 +67,20 @@ describe("structured response parsing", () => {
     const parsed = parseLearnings(
       '{"learnings":[{"text":"Python has docs","sourceUrls":["https://trusted.example","https://bad.example"],"excerpt":"official docs exist"}],"followUpQuestions":["What versions?"]}',
       ["https://trusted.example"],
+      { "https://trusted.example": "official docs exist in this fetched page" },
     );
     expect(parsed.learnings).toEqual([
       { text: "Python has docs", sourceUrls: ["https://trusted.example"], excerpt: "official docs exist" },
     ]);
     expect(parsed.followUpQuestions).toEqual(["What versions?"]);
+  });
+
+  it("rejects an excerpt that is not present in fetched source text", () => {
+    expect(() => parseLearnings(
+      '{"learnings":[{"text":"Funding fact","sourceUrls":["https://source.test"],"excerpt":"invented funding passage"}],"followUpQuestions":[]}',
+      ["https://source.test"],
+      { "https://source.test": "This fetched page is about gardening and soil." },
+    )).toThrow(/excerpt/i);
   });
 
   it("parses clarification ids with dedup", () => {
