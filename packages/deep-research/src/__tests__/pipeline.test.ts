@@ -122,11 +122,13 @@ describe("structured response parsing", () => {
   });
 
   it("requires an excerpt for every accepted learning", () => {
-    expect(() => parseLearnings(
+    const parsed = parseLearnings(
       '{"learnings":[{"text":"Funding fact","sourceUrls":["https://source.test"]}],"followUpQuestions":[]}',
       ["https://source.test"],
       { "https://source.test": "A fetched funding page." },
-    )).toThrow(/excerpt/i);
+    );
+    expect(parsed.learnings).toHaveLength(0);
+    expect(parsed.rejectionReasons).toContain("excerpt is required");
   });
 
   it("filters citations whose excerpt is absent from that source", () => {
@@ -136,15 +138,7 @@ describe("structured response parsing", () => {
       { "https://a.test": "funding passage", "https://b.test": "gardening page" },
     );
     expect(parsed.learnings[0].sourceUrls).toEqual(["https://a.test"]);
-  });
-
-  it("keeps only citations whose excerpt is locally present", () => {
-    const parsed = parseLearnings(
-      '{"learnings":[{"text":"Funding fact","sourceUrls":["https://a.test","https://b.test"],"excerpt":"funding passage"}],"followUpQuestions":[]}',
-      ["https://a.test", "https://b.test"],
-      { "https://a.test": "funding passage", "https://b.test": "gardening page" },
-    );
-    expect(parsed.learnings[0].sourceUrls).toEqual(["https://a.test"]);
+    expect(parsed.rejectionReasons).toHaveLength(0);
   });
 
 

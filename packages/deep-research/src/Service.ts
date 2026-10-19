@@ -211,8 +211,9 @@ async function analyzeSearchQuery(args: {
     const extracted = await structured(deps, {
       prompt: learningsPrompt(searchQuery.query, contents),
       parser: (text) => {
-        try { return parseLearnings(text, scraped.map((source) => source.url), fetchedTextByUrl, searchQuery.query); }
-        catch (error) { deps.emit.emit("evidence.rejected", { query: searchQuery.query, reason: error instanceof Error ? error.message : String(error) }); throw error; }
+        const parsed = parseLearnings(text, scraped.map((source) => source.url), fetchedTextByUrl, searchQuery.query);
+        for (const reason of parsed.rejectionReasons) deps.emit.emit("evidence.rejected", { query: searchQuery.query, reason });
+        return parsed;
       },
       purpose: "extract_learnings",
     });

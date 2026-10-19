@@ -65,35 +65,39 @@ export function parseResearchPlan(text: string): Array<{ query: string; research
 export function parseLearnings(text: string, allowedSourceUrls: string[] = [], fetchedTextByUrl: Record<string, string> = {}, scope = ""): {
   learnings: Learning[];
   followUpQuestions: string[];
-  missingScopes: string[];
+  rejectionReasons: string[];
 } {
   const result = extractJsonObject(text);
   if (!Array.isArray(result.learnings)) throw new Error("Expected learnings to be an array.");
   const allowedUrls = new Set(allowedSourceUrls);
+  const rejectionReasons: string[] = [];
   const learnings = result.learnings
     .filter((item) => typeof (item as { text?: string }).text === "string" && (item as { text: string }).text.trim())
     .map((item) => {
-      const entry = item as { text: string; sourceUrls?: unknown; excerpt?: unknown; scope?: unknown };
-      const excerpt = typeof entry.excerpt === "string" ? entry.excerpt.trim().slice(0, 4000) : undefined;
-      const sourceUrls = [...new Set<string>(Array.isArray(entry.sourceUrls) ? (entry.sourceUrls as string[]) : [])]
-        .filter((url) => typeof url === "string" && allowedUrls.has(url))
-        .slice(0, 5);
-      if (!excerpt) throw new Error("Learning excerpt is required for fetched evidence.");
-      const groundedSourceUrls = sourceUrls.filter((url) => fetchedTextByUrl[url]?.includes(excerpt));
-      if (groundedSourceUrls.length === 0) {
-        throw new Error("Learning excerpt was not found in any cited source text.");
+      try {
+        const entry = item as { text: string; sourceUrls?: unknown; excerpt?: unknown; scope?: unknown };
+        const excerpt = typeof entry.excerpt === "string" ? entry.excerpt.trim().slice(0, 4000) : undefined;
+        const sourceUrls = [...new Set<string>(Array.isArray(entry.sourceUrls) ? (entry.sourceUrls as string[]) : [])]
+          .filter((url) => typeof url === "string" && allowedUrls.has(url))
+          .slice(0, 5);
+        if (!excerpt) throw new Error("excerpt is required");
+        const groundedSourceUrls = sourceUrls.filter((url) => fetchedTextByUrl[url]?.includes(excerpt));
+        if (groundedSourceUrls.length === 0) throw new Error("excerpt not found in fetched source text");
+        return {
+          text: entry.text.trim(),
+          sourceUrls: groundedSourceUrls,
+          ...(excerpt ? { excerpt } : {}),
+          ...(typeof entry.scope === "string" && entry.scope.trim() ? { scope: entry.scope.trim().slice(0, 500) } : scope ? { scope } : {}),
+        };
+      } catch (error) {
+        rejectionReasons.push(error instanceof Error ? error.message : String(error));
+        return null;
       }
-      return {
-        text: entry.text.trim(),
-        sourceUrls: groundedSourceUrls,
-        ...(excerpt ? { excerpt } : {}),
-        ...(typeof entry.scope === "string" && entry.scope.trim() ? { scope: entry.scope.trim().slice(0, 500) } : scope ? { scope } : {}),
-      };
     })
-    .filter((item) => item.sourceUrls.length > 0)
+    .filter((item): item is Learning => item !== null)
     .slice(0, 8);
 
-  return { learnings, followUpQuestions: stringList(result.followUpQuestions, "followUpQuestions", 6), missingScopes: [] };
+  return { learnings, followUpQuestions: stringList(result.followUpQuestions, "followUpQuestions", 6), rejectionReasons };
 }
 export function parseClarificationQuestions(text: string): Clarification[] {
   const result = extractJsonObject(text);
