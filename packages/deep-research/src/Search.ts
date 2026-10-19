@@ -64,7 +64,7 @@ export function rankSearchResults(query: string, entries: SearchResult[]): Searc
       }
       if (/fund|raise|series|security|startup|report|coverage/.test(haystack)) score += 20;
       if (score <= 0 && reasons.length === 0) reasons.push("low topical relevance");
-      const failureReason = reasons.some((reason) => reason.startsWith("topic collision")) ? reasons.join(", ") : undefined;
+      const failureReason = reasons.some((reason) => reason.startsWith("topic collision") || reason === "low topical relevance") ? reasons.join(", ") : undefined;
       return { entry: { ...entry, failureReason }, score, index };
     })
     .sort((a, b) => b.score - a.score || a.index - b.index)
