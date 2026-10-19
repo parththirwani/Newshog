@@ -66,6 +66,24 @@ describe("Bing failover search", () => {
     }
   });
 
+  it("emits provider traces for HTML failure and RSS recovery", async () => {
+    const traces: unknown[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input) => String(input).includes("format=rss")
+      ? new Response(`<rss><channel><item><title>Result</title><link>https://example.com/result</link><description>relevant</description></item></channel></rss>`)
+      : new Response("<html></html>")) as typeof fetch;
+    try {
+      const result = await createBingProvider().search("funding", { onTrace: (trace) => traces.push(trace) });
+      expect(result).toHaveLength(1);
+      expect(traces).toEqual([
+        expect.objectContaining({ provider: "bing-html", resultCount: 0, failureReason: expect.stringMatching(/RSS/) }),
+        expect.objectContaining({ provider: "bing-rss", resultCount: 1 }),
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("parses Bing RSS organic results", () => {
     const xml = `<rss><channel><item><title>Linx raises $50M</title><link>https://example.com/linx</link><description>Linx Security raised $50 million.</description></item><item><title>Identity dictionary</title><link>https://example.com/dictionary</link><description>definition</description></item></channel></rss>`;
     const results = parseBingRss(xml);

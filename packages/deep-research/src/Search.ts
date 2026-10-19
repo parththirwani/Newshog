@@ -1,5 +1,5 @@
 import { JSDOM } from "jsdom";
-import type { SearchResult } from "./types";
+import type { SearchResult, SearchTrace } from "./types";
 
 export const DDG_HTML_URL = process.env.DDG_SEARCH_URL ?? "https://html.duckduckgo.com/html/";
 
@@ -7,7 +7,7 @@ const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 
 export interface SearchProvider {
-  search(query: string, opts?: { signal?: AbortSignal }): Promise<SearchResult[]>;
+  search(query: string, opts?: { signal?: AbortSignal; onTrace?: (trace: SearchTrace) => void }): Promise<SearchResult[]>;
 }
 
 function validUrl(value: string): boolean {
@@ -115,7 +115,9 @@ export function parseDdgHtml(html: string): SearchResult[] {
   return normalizeSearchResults(results, 10);
 }
 
-async function ddgHtml(query: string, signal?: AbortSignal): Promise<SearchResult[]> {
+async function ddgHtml(query: string, signal?: AbortSignal, onTrace?: (trace: SearchTrace) => void): Promise<SearchResult[]> {
+  const attempt = 1;
+  const started = Date.now();
   const url = new URL(DDG_HTML_URL);
   url.searchParams.set("q", query);
   const response = await fetch(url, {
@@ -124,7 +126,9 @@ async function ddgHtml(query: string, signal?: AbortSignal): Promise<SearchResul
     signal: signal ?? AbortSignal.timeout(20_000),
   });
   if (!response.ok) throw new Error(`DuckDuckGo returned HTTP ${response.status}.`);
-  return parseDdgHtml(await response.text());
+  const results = parseDdgHtml(await response.text());
+  onTrace?.({ provider: "ddg-html", query, attempt, resultCount: results.length, latencyMs: Date.now() - started, ...(results.length === 0 ? { failureReason: "empty result set" } : {}) });
+  return results;
 }
 
 /**
@@ -184,7 +188,7 @@ export function parseBingHtml(html: string): SearchResult[] {
   return normalizeSearchResults(results, 10);
 }
 
-async function bingHtml(query: string, signal?: AbortSignal): Promise<SearchResult[]> {
+async function bingHtml(query: string, signal?: AbortSignal, onTrace?: (trace: SearchTrace) => void): Promise<SearchResult[]> {
   const url = new URL(BING_URL);
   url.searchParams.set("q", query);
   const response = await fetch(url, {
@@ -197,21 +201,27 @@ async function bingHtml(query: string, signal?: AbortSignal): Promise<SearchResu
     signal: signal ?? AbortSignal.timeout(20_000),
   });
   if (!response.ok) throw new Error(`Bing returned HTTP ${response.status}.`);
+  const started = Date.now();
   const body = await response.text();
   const htmlResults = parseBingHtml(body);
-  if (htmlResults.length > 0) return htmlResults;
+  if (htmlResults.length > 0) {
+    onTrace?.({ provider: "bing-html", query, attempt: 1, resultCount: htmlResults.length, latencyMs: Date.now() - started });
+    return htmlResults;
+  }
+  onTrace?.({ provider: "bing-html", query, attempt: 1, resultCount: 0, latencyMs: Date.now() - started, failureReason: "empty HTML result set; trying RSS" });
   const rssUrl = new URL("https://www.bing.com/search");
   rssUrl.searchParams.set("q", query);
   rssUrl.searchParams.set("format", "rss");
   const rssResponse = await fetch(rssUrl, { headers: { "User-Agent": UA, Accept: "application/rss+xml, application/xml" }, redirect: "follow", signal: signal ?? AbortSignal.timeout(20_000) });
   if (!rssResponse.ok) throw new Error(`Bing RSS returned HTTP ${rssResponse.status}.`);
   const rssResults = parseBingRss(await rssResponse.text());
+  onTrace?.({ provider: "bing-rss", query, attempt: 2, resultCount: rssResults.length, latencyMs: Date.now() - started, ...(rssResults.length === 0 ? { failureReason: "empty RSS result set" } : {}) });
   if (rssResults.length === 0) throw new Error("Bing returned no organic results in HTML or RSS.");
   return rssResults;
 }
 
 export function createBingProvider(): SearchProvider {
-  return { search: (query, opts) => bingHtml(query, opts?.signal) };
+  return { search: (query, opts) => bingHtml(query, opts?.signal, opts?.onTrace) };
 }
 
 /**
@@ -221,19 +231,22 @@ export function createBingProvider(): SearchProvider {
 export function createFailoverProvider(primary: SearchProvider = createDdgProvider(), fallback: SearchProvider = createBingProvider()): SearchProvider {
   return {
     async search(query, opts) {
+      let primaryError: string | undefined;
       try {
         const results = await primary.search(query, opts);
         if (results.length > 0) return results;
-      } catch {
-        // fall through to fallback
+        primaryError = "empty result set";
+      } catch (error) {
+        primaryError = error instanceof Error ? error.message : String(error);
       }
-      return fallback.search(query, opts);
+      opts?.onTrace?.({ provider: "failover", query, attempt: 1, resultCount: 0, failureReason: `primary failed: ${primaryError ?? "unknown"}` });
+      return fallback.search(query, { ...opts, onTrace: opts?.onTrace });
     },
   };
 }
 
 export function createDdgProvider(): SearchProvider {
-  return { search: (query, opts) => ddgHtml(query, opts?.signal) };
+  return { search: (query, opts) => ddgHtml(query, opts?.signal, opts?.onTrace) };
 }
 
 let provider: SearchProvider | undefined;

@@ -13,6 +13,7 @@ export interface SearchTrace {
   attempt: number;
   resultCount: number;
   failureReason?: string;
+  latencyMs?: number;
 }
 
 export interface CandidateScore {

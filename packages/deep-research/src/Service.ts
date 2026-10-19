@@ -23,7 +23,7 @@ import { scrapeMarkdown } from "./Scrape";
 import { getSearchProvider, rankSearchResults } from "./Search";
 import { enforceReport } from "./Verify";
 import type { RepairFn, Rewrite } from "./Verify";
-import type { ClarificationAnswer, ClarificationQuestion, DeepResearchInput, Learning, ResearchSource, SearchResult } from "./types";
+import type { ClarificationAnswer, ClarificationQuestion, DeepResearchInput, Learning, ResearchSource, SearchResult, SearchTrace } from "./types";
 import { extractPublishDate } from "./Dates";
 
 export const SEARCH_CONCURRENCY = 2;
@@ -104,7 +104,7 @@ interface Deps {
   runId: string;
   analytics?: Record<string, string>;
   signal?: AbortSignal;
-  search: (query: string, opts?: { engine?: string; signal?: AbortSignal }) => Promise<SearchResult[]>;
+  search: (query: string, opts?: { engine?: string; signal?: AbortSignal; onTrace?: (trace: SearchTrace) => void }) => Promise<SearchResult[]>;
   scrape: (url: string) => Promise<string>;
   /** Injected enforcement repair (tests supply a fake; production uses the LLM). */
   repairSentences?: RepairFn;
@@ -146,7 +146,7 @@ async function analyzeSearchQuery(args: {
 
   let sources: SearchResult[];
   try {
-    sources = await deps.search(searchQuery.query, { signal: deps.signal });
+    sources = await deps.search(searchQuery.query, { signal: deps.signal, onTrace: (trace) => deps.emit.emit("search.trace", trace as unknown as Record<string, unknown>) });
     sources = rankSearchResults(searchQuery.query, sources);
     deps.emit.emit("search.completed", { query: searchQuery.query, sourceCount: sources.length });
     deps.emit.emit("sources.discovered", { query: searchQuery.query, urls: sources.map((s) => s.url) });
@@ -347,6 +347,8 @@ export interface ResearchOutcome {
   sources: ResearchSource[];
   /** True only when synthesis produced an answer supported by accepted evidence. */
   evidenceComplete: boolean;
+  /** Provider-attempt diagnostics are emitted as `search.trace` events. */
+  searchTraceCount?: number;
   /** Human-readable reason when the run is partial or failed quality checks. */
   statusReason?: string;
   /** URLs that were fetched successfully and contributed accepted evidence. */
