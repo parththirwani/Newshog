@@ -79,12 +79,13 @@ export function parseLearnings(text: string, allowedSourceUrls: string[] = [], f
         .filter((url) => typeof url === "string" && allowedUrls.has(url))
         .slice(0, 5);
       if (!excerpt) throw new Error("Learning excerpt is required for fetched evidence.");
-      if (sourceUrls.length === 0 || sourceUrls.some((url) => !fetchedTextByUrl[url]?.includes(excerpt))) {
-        throw new Error("Learning excerpt was not found in every cited source text.");
+      const groundedSourceUrls = sourceUrls.filter((url) => fetchedTextByUrl[url]?.includes(excerpt));
+      if (groundedSourceUrls.length === 0) {
+        throw new Error("Learning excerpt was not found in any cited source text.");
       }
       return {
         text: entry.text.trim(),
-        sourceUrls,
+        sourceUrls: groundedSourceUrls,
         ...(excerpt ? { excerpt } : {}),
         ...(typeof entry.scope === "string" && entry.scope.trim() ? { scope: entry.scope.trim().slice(0, 500) } : scope ? { scope } : {}),
       };

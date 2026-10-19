@@ -129,13 +129,24 @@ describe("structured response parsing", () => {
     )).toThrow(/excerpt/i);
   });
 
-  it("rejects an excerpt that is not present in every cited source", () => {
-    expect(() => parseLearnings(
+  it("filters citations whose excerpt is absent from that source", () => {
+    const parsed = parseLearnings(
       '{"learnings":[{"text":"Funding fact","sourceUrls":["https://a.test","https://b.test"],"excerpt":"funding passage"}],"followUpQuestions":[]}',
       ["https://a.test", "https://b.test"],
       { "https://a.test": "funding passage", "https://b.test": "gardening page" },
-    )).toThrow(/every cited source/i);
+    );
+    expect(parsed.learnings[0].sourceUrls).toEqual(["https://a.test"]);
   });
+
+  it("keeps only citations whose excerpt is locally present", () => {
+    const parsed = parseLearnings(
+      '{"learnings":[{"text":"Funding fact","sourceUrls":["https://a.test","https://b.test"],"excerpt":"funding passage"}],"followUpQuestions":[]}',
+      ["https://a.test", "https://b.test"],
+      { "https://a.test": "funding passage", "https://b.test": "gardening page" },
+    );
+    expect(parsed.learnings[0].sourceUrls).toEqual(["https://a.test"]);
+  });
+
 
   it("accepts mixed-source findings when each excerpt is local to its cited source", () => {
     const parsed = parseLearnings(
